@@ -1,0 +1,29 @@
+{
+    "max_retries": 3,
+    "heartbeat_interval_seconds": 30,
+    "heartbeat_timeout_multiplier": 3,
+    "roles": {
+        "developer_agent": {
+            "permissions": [
+                {"resource": "shared_memory:*", "actions": ["read", "write"]},
+                {"resource": "task:*", "actions": ["read", "update"]}
+            ]
+        },
+        "readonly_agent": {
+            "permissions": [
+                {"resource": "shared_memory:*", "actions": ["read"]},
+                {"resource": "task:*", "actions": ["read"]}
+            ]
+        }
+    },
+    "tool_whitelist": {
+        "developer_agent": {
+            "allowed_tools": ["llm_api", "file_write", "file_read"],
+            "rate_limit_per_minute": 60
+        },
+        "readonly_agent": {
+            "allowed_tools": ["llm_api", "file_read"],
+            "rate_limit_per_minute": 30
+        }
+    }
+}

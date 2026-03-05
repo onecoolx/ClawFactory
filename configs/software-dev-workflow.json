@@ -1,0 +1,36 @@
+{
+    "id": "software-dev-workflow",
+    "name": "软件开发工作流",
+    "nodes": [
+        {
+            "id": "requirement",
+            "type": "requirement_analysis",
+            "capabilities": ["requirement_analysis"],
+            "input": {"user_requirement": "构建一个用户管理系统"},
+            "priority": 10
+        },
+        {
+            "id": "design",
+            "type": "detailed_design",
+            "capabilities": ["detailed_design"],
+            "priority": 8
+        },
+        {
+            "id": "coding",
+            "type": "coding",
+            "capabilities": ["coding"],
+            "priority": 6
+        },
+        {
+            "id": "testing",
+            "type": "testing",
+            "capabilities": ["testing"],
+            "priority": 4
+        }
+    ],
+    "edges": [
+        {"from": "requirement", "to": "design"},
+        {"from": "design", "to": "coding"},
+        {"from": "coding", "to": "testing"}
+    ]
+}

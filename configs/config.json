@@ -1,0 +1,9 @@
+{
+    "port": 8080,
+    "db_path": "data/clawfactory.db",
+    "data_dir": "data",
+    "log_level": "info",
+    "api_tokens": [
+        "dev-token-001"
+    ]
+}
