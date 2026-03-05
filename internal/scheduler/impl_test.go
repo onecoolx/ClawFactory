@@ -11,7 +11,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-func newTestScheduler(t testing.TB) (*StoreScheduler, *store.SQLiteStore) {
+func newTestScheduler(t *testing.T) (*StoreScheduler, *store.SQLiteStore) {
 	tmpDB, err := os.CreateTemp("", "clawfactory-sched-*.db")
 	if err != nil {
 		t.Fatal(err)
@@ -46,14 +46,15 @@ func seedTestAgent(s *store.SQLiteStore, agentID string, caps []string, status s
 // Property 5: 任务分配能力匹配
 // **Validates: Requirements 3.1, 7.1**
 func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// 每次迭代使用独立的调度器和存储，避免跨迭代状态污染
 		sched, s := newTestScheduler(t)
 
-		agentCaps := []string{rapid.SampledFrom([]string{"coding", "testing", "design"}).Draw(t, "agentCap")}
+		agentCaps := []string{rapid.SampledFrom([]string{"coding", "testing", "design"}).Draw(rt, "agentCap")}
 		seedTestAgent(s, "agent-cap", agentCaps, "online")
 
-		taskCap := rapid.SampledFrom([]string{"coding", "testing", "design", "analysis"}).Draw(t, "taskCap")
-		taskID := rapid.StringMatching(`^tc-[a-z0-9]{4}$`).Draw(t, "taskID")
+		taskCap := rapid.SampledFrom([]string{"coding", "testing", "design", "analysis"}).Draw(rt, "taskCap")
+		taskID := "tc-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "taskID")
 
 		q := taskqueue.NewStoreBackedQueue(s)
 		q.Enqueue(model.Task{
@@ -63,10 +64,9 @@ func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
 
 		task, err := sched.AssignTask("agent-cap", agentCaps)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 
-		// 检查能力匹配
 		hasMatch := false
 		for _, ac := range agentCaps {
 			if ac == taskCap {
@@ -74,10 +74,10 @@ func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
 			}
 		}
 		if hasMatch && task == nil {
-			t.Fatal("matching task should be assigned")
+			rt.Fatal("matching task should be assigned")
 		}
 		if !hasMatch && task != nil {
-			t.Fatal("non-matching task should not be assigned")
+			rt.Fatal("non-matching task should not be assigned")
 		}
 	})
 }
@@ -85,11 +85,11 @@ func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
 // Property 6: 任务分配状态流转
 // **Validates: Requirements 7.4, 11.3**
 func TestProperty6_TaskAssignmentStatusTransition(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+	rapid.Check(t, func(rt *rapid.T) {
 		sched, s := newTestScheduler(t)
 		seedTestAgent(s, "agent-st", []string{"cap1"}, "online")
 
-		taskID := rapid.StringMatching(`^ts-[a-z0-9]{4}$`).Draw(t, "taskID")
+		taskID := "ts-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "taskID")
 		q := taskqueue.NewStoreBackedQueue(s)
 		q.Enqueue(model.Task{
 			TaskID: taskID, WorkflowID: "wf-sched", NodeID: "n1", Type: "test",
@@ -98,19 +98,18 @@ func TestProperty6_TaskAssignmentStatusTransition(t *testing.T) {
 
 		task, err := sched.AssignTask("agent-st", []string{"cap1"})
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if task == nil {
-			t.Fatal("task should be assigned")
+			rt.Fatal("task should be assigned")
 		}
 
-		// 验证状态已变为 assigned
 		got, err := q.GetTask(taskID)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if got.Status != "assigned" {
-			t.Fatalf("task status: got %q, want assigned", got.Status)
+			rt.Fatalf("task status: got %q, want assigned", got.Status)
 		}
 	})
 }
@@ -118,7 +117,6 @@ func TestProperty6_TaskAssignmentStatusTransition(t *testing.T) {
 // Property 11: 负载均衡调度
 // **Validates: Requirements 7.2**
 func TestProperty11_LoadBalancing(t *testing.T) {
-	// 简化测试：验证 offline/deregistered 智能体不被分配任务
 	sched, s := newTestScheduler(t)
 	seedTestAgent(s, "agent-off", []string{"cap1"}, "offline")
 
@@ -140,11 +138,11 @@ func TestProperty11_LoadBalancing(t *testing.T) {
 // Property 12: 无匹配智能体时任务保留
 // **Validates: Requirements 7.3**
 func TestProperty12_NoMatchTaskRetained(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
+	rapid.Check(t, func(rt *rapid.T) {
 		sched, s := newTestScheduler(t)
 		seedTestAgent(s, "agent-nm", []string{"coding"}, "online")
 
-		taskID := rapid.StringMatching(`^nm-[a-z0-9]{4}$`).Draw(t, "taskID")
+		taskID := "nm-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "taskID")
 		q := taskqueue.NewStoreBackedQueue(s)
 		q.Enqueue(model.Task{
 			TaskID: taskID, WorkflowID: "wf-sched", NodeID: "n1", Type: "test",
@@ -154,19 +152,18 @@ func TestProperty12_NoMatchTaskRetained(t *testing.T) {
 
 		task, err := sched.AssignTask("agent-nm", []string{"coding"})
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if task != nil {
-			t.Fatal("no matching task should return nil")
+			rt.Fatal("no matching task should return nil")
 		}
 
-		// 任务应保留在队列中
 		got, err := q.GetTask(taskID)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if got.Status != "pending" {
-			t.Fatalf("task should remain pending, got %s", got.Status)
+			rt.Fatalf("task should remain pending, got %s", got.Status)
 		}
 	})
 }

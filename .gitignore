@@ -1,1 +1,39 @@
+# Kiro specs
 .kiro
+
+# Build output
+bin/
+
+# Data directory (SQLite DB, artifacts)
+data/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Rapid property test failure files
+**/testdata/rapid/**/*.fail
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -10,7 +10,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-func newTestQueue(t testing.TB) *StoreBackedQueue {
+func newTestQueue(t *testing.T) *StoreBackedQueue {
 	tmpFile, err := os.CreateTemp("", "clawfactory-tq-*.db")
 	if err != nil {
 		t.Fatal(err)
@@ -35,23 +35,24 @@ func newTestQueue(t testing.TB) *StoreBackedQueue {
 // Property 16: 任务入队初始状态
 // **Validates: Requirements 11.2**
 func TestProperty16_EnqueueInitialStatus(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		q := newTestQueue(t)
-		taskID := rapid.StringMatching(`^tq-[a-z0-9]{4}$`).Draw(t, "taskID")
+	q := newTestQueue(t)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		taskID := "tq-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "taskID")
 		task := model.Task{
 			TaskID: taskID, WorkflowID: "wf-test", NodeID: "n1", Type: "test",
 			Capabilities: []string{"cap1"}, Input: map[string]string{}, Output: map[string]string{},
 			Status: "whatever", // 入队时应被覆盖为 pending
 		}
 		if err := q.Enqueue(task); err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		got, err := q.GetTask(taskID)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if got.Status != "pending" {
-			t.Fatalf("enqueued task status: got %q, want %q", got.Status, "pending")
+			rt.Fatalf("enqueued task status: got %q, want %q", got.Status, "pending")
 		}
 	})
 }
@@ -59,14 +60,27 @@ func TestProperty16_EnqueueInitialStatus(t *testing.T) {
 // Property 17: 任务优先级排序
 // **Validates: Requirements 11.4**
 func TestProperty17_TaskPriorityOrdering(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		q := newTestQueue(t)
-		n := rapid.IntRange(2, 6).Draw(t, "taskCount")
+	q := newTestQueue(t)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		// 先清理：把所有 pending 任务标记为 completed
+		for {
+			task, err := q.Dequeue([]string{"cap1"})
+			if err != nil {
+				rt.Fatal(err)
+			}
+			if task == nil {
+				break
+			}
+			q.UpdateStatus(task.TaskID, "completed", nil, "")
+		}
+
+		n := rapid.IntRange(2, 6).Draw(rt, "taskCount")
 		for i := 0; i < n; i++ {
-			prio := rapid.IntRange(0, 100).Draw(t, "priority")
+			prio := rapid.IntRange(0, 100).Draw(rt, "priority")
 			q.Enqueue(model.Task{
-				TaskID: rapid.StringMatching(`^tp-[a-z0-9]{5}$`).Draw(t, "taskID"),
-				WorkflowID: "wf-test", NodeID: "n1", Type: "test",
+				TaskID:       "tp-" + rapid.StringMatching("[a-z0-9]{5}").Draw(rt, "taskID"),
+				WorkflowID:   "wf-test", NodeID: "n1", Type: "test",
 				Capabilities: []string{"cap1"}, Input: map[string]string{},
 				Output: map[string]string{}, Priority: prio,
 			})
@@ -76,18 +90,17 @@ func TestProperty17_TaskPriorityOrdering(t *testing.T) {
 		for {
 			task, err := q.Dequeue([]string{"cap1"})
 			if err != nil {
-				t.Fatal(err)
+				rt.Fatal(err)
 			}
 			if task == nil {
 				break
 			}
 			priorities = append(priorities, task.Priority)
-			// Mark as completed so it's not dequeued again
 			q.UpdateStatus(task.TaskID, "completed", nil, "")
 		}
 		for i := 1; i < len(priorities); i++ {
 			if priorities[i] > priorities[i-1] {
-				t.Fatalf("priority not descending: %v", priorities)
+				rt.Fatalf("priority not descending: %v", priorities)
 			}
 		}
 	})

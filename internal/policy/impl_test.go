@@ -10,7 +10,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-func newTestPolicyEngine(t testing.TB) (*ConfigPolicyEngine, *store.SQLiteStore) {
+func newTestPolicyEngine(t *testing.T) (*ConfigPolicyEngine, *store.SQLiteStore) {
 	tmpDB, err := os.CreateTemp("", "clawfactory-policy-*.db")
 	if err != nil {
 		t.Fatal(err)
@@ -61,17 +61,17 @@ func seedAgent(s *store.SQLiteStore, agentID string, roles []string, caps []stri
 // Property 13: 重试策略正确性
 // **Validates: Requirements 8.3, 8.4**
 func TestProperty13_RetryPolicy(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		pe, s := newTestPolicyEngine(t)
+	pe, s := newTestPolicyEngine(t)
 
-		// 创建 workflow
-		s.SaveWorkflow(
-			model.WorkflowInstance{InstanceID: "wf-r", DefinitionID: "def-1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
-			model.WorkflowDefinition{ID: "def-1", Name: "test"},
-		)
+	// 创建 workflow
+	s.SaveWorkflow(
+		model.WorkflowInstance{InstanceID: "wf-r", DefinitionID: "def-1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
+		model.WorkflowDefinition{ID: "def-1", Name: "test"},
+	)
 
-		retryCount := rapid.IntRange(0, 5).Draw(t, "retryCount")
-		taskID := rapid.StringMatching(`^rt-[a-z0-9]{4}$`).Draw(t, "taskID")
+	rapid.Check(t, func(rt *rapid.T) {
+		retryCount := rapid.IntRange(0, 5).Draw(rt, "retryCount")
+		taskID := "rt-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "taskID")
 		s.SaveTask(model.Task{
 			TaskID: taskID, WorkflowID: "wf-r", NodeID: "n1", Type: "test",
 			Capabilities: []string{"c"}, Input: map[string]string{}, Output: map[string]string{},
@@ -80,11 +80,11 @@ func TestProperty13_RetryPolicy(t *testing.T) {
 
 		shouldRetry, err := pe.ShouldRetry(taskID)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		expected := retryCount < pe.GetMaxRetries()
 		if shouldRetry != expected {
-			t.Fatalf("retryCount=%d, maxRetries=%d: got shouldRetry=%v, want %v",
+			rt.Fatalf("retryCount=%d, maxRetries=%d: got shouldRetry=%v, want %v",
 				retryCount, pe.GetMaxRetries(), shouldRetry, expected)
 		}
 	})
@@ -93,21 +93,19 @@ func TestProperty13_RetryPolicy(t *testing.T) {
 // Property 14: 权限验证与审计
 // **Validates: Requirements 9.3, 9.4**
 func TestProperty14_AuthorizationAndAudit(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		pe, s := newTestPolicyEngine(t)
+	pe, s := newTestPolicyEngine(t)
 
-		role := rapid.SampledFrom([]string{"developer_agent", "readonly_agent"}).Draw(t, "role")
+	rapid.Check(t, func(rt *rapid.T) {
+		role := rapid.SampledFrom([]string{"developer_agent", "readonly_agent"}).Draw(rt, "role")
 		seedAgent(s, "agent-auth", []string{role}, []string{"cap1"})
 
-		action := rapid.SampledFrom([]string{"read", "write", "update", "delete"}).Draw(t, "action")
-		resource := rapid.SampledFrom([]string{"shared_memory:wf-1/data", "task:task-1", "unknown:res"}).Draw(t, "resource")
+		action := rapid.SampledFrom([]string{"read", "write", "update", "delete"}).Draw(rt, "action")
+		resource := rapid.SampledFrom([]string{"shared_memory:wf-1/data", "task:task-1", "unknown:res"}).Draw(rt, "resource")
 
 		resp := pe.Authorize(model.AuthorizeRequest{
 			AgentID: "agent-auth", Action: action, Resource: resource,
 		})
 
-		// 验证：developer_agent 有 shared_memory:* read/write 和 task:* read/update
-		// readonly_agent 有 shared_memory:* read 和 task:* read
 		roleDef := pe.config.Roles[role]
 		expectedAllowed := false
 		for _, perm := range roleDef.Permissions {
@@ -118,7 +116,7 @@ func TestProperty14_AuthorizationAndAudit(t *testing.T) {
 		}
 
 		if resp.Allowed != expectedAllowed {
-			t.Fatalf("role=%s action=%s resource=%s: got allowed=%v, want %v",
+			rt.Fatalf("role=%s action=%s resource=%s: got allowed=%v, want %v",
 				role, action, resource, resp.Allowed, expectedAllowed)
 		}
 	})
@@ -127,27 +125,26 @@ func TestProperty14_AuthorizationAndAudit(t *testing.T) {
 // Property 15: 工具白名单与速率限制
 // **Validates: Requirements 10.2, 10.5**
 func TestProperty15_ToolWhitelistAndRateLimit(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		pe, s := newTestPolicyEngine(t)
+	pe, s := newTestPolicyEngine(t)
 
-		role := rapid.SampledFrom([]string{"developer_agent", "readonly_agent"}).Draw(t, "role")
+	rapid.Check(t, func(rt *rapid.T) {
+		role := rapid.SampledFrom([]string{"developer_agent", "readonly_agent"}).Draw(rt, "role")
 		seedAgent(s, "agent-tool", []string{role}, []string{"cap1"})
 
-		tool := rapid.SampledFrom([]string{"llm_api", "file_write", "file_read", "dangerous_tool"}).Draw(t, "tool")
+		tool := rapid.SampledFrom([]string{"llm_api", "file_write", "file_read", "dangerous_tool"}).Draw(rt, "tool")
 
 		allowed := pe.IsToolAllowed("agent-tool", tool)
 
-		// 验证白名单
 		tp := pe.config.ToolWhitelist[role]
 		expectedAllowed := false
-		for _, t := range tp.AllowedTools {
-			if t == tool {
+		for _, at := range tp.AllowedTools {
+			if at == tool {
 				expectedAllowed = true
 				break
 			}
 		}
 		if allowed != expectedAllowed {
-			t.Fatalf("role=%s tool=%s: got allowed=%v, want %v", role, tool, allowed, expectedAllowed)
+			rt.Fatalf("role=%s tool=%s: got allowed=%v, want %v", role, tool, allowed, expectedAllowed)
 		}
 	})
 }

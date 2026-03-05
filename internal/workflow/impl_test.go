@@ -2,9 +2,9 @@ package workflow
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/clawfactory/clawfactory/internal/model"
 	"github.com/clawfactory/clawfactory/internal/store"
@@ -12,7 +12,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-func newTestWorkflowEngine(t testing.TB) (*StoreWorkflowEngine, *store.SQLiteStore) {
+func newTestWorkflowEngine(t *testing.T) (*StoreWorkflowEngine, *store.SQLiteStore) {
 	tmpDB, err := os.CreateTemp("", "clawfactory-wf-*.db")
 	if err != nil {
 		t.Fatal(err)
@@ -33,11 +33,10 @@ func newTestWorkflowEngine(t testing.TB) (*StoreWorkflowEngine, *store.SQLiteSto
 // Property 20: DAG 验证正确性
 // **Validates: Requirements 14.2**
 func TestProperty20_DAGValidation(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		e, _ := newTestWorkflowEngine(t)
+	e, _ := newTestWorkflowEngine(t)
 
-		// 生成随机 DAG 或带环图
-		hasCycle := rapid.Bool().Draw(t, "hasCycle")
+	rapid.Check(t, func(rt *rapid.T) {
+		hasCycle := rapid.Bool().Draw(rt, "hasCycle")
 		var def model.WorkflowDefinition
 		if hasCycle {
 			def = model.WorkflowDefinition{
@@ -52,11 +51,12 @@ func TestProperty20_DAGValidation(t *testing.T) {
 				},
 			}
 		} else {
-			n := rapid.IntRange(2, 5).Draw(t, "nodeCount")
+			n := rapid.IntRange(2, 5).Draw(rt, "nodeCount")
 			nodes := make([]model.WorkflowNode, n)
 			ids := make([]string, n)
+			// 使用索引确保节点 ID 唯一
 			for i := 0; i < n; i++ {
-				ids[i] = rapid.StringMatching(`^n[a-z]$`).Draw(t, "nodeID")
+				ids[i] = fmt.Sprintf("n%d", i)
 				nodes[i] = model.WorkflowNode{ID: ids[i], Type: "t", Capabilities: []string{"c"}}
 			}
 			// 只添加前向边（保证无环）
@@ -69,10 +69,10 @@ func TestProperty20_DAGValidation(t *testing.T) {
 
 		err := e.ValidateDAG(def)
 		if hasCycle && err == nil {
-			t.Fatal("expected error for cyclic graph")
+			rt.Fatal("expected error for cyclic graph")
 		}
 		if !hasCycle && err != nil {
-			t.Fatalf("unexpected error for DAG: %v", err)
+			rt.Fatalf("unexpected error for DAG: %v", err)
 		}
 	})
 }
@@ -104,7 +104,6 @@ func TestProperty21_WorkflowRootTaskScheduling(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 起始节点应为 a 和 b（入度为 0）
 	if len(tasks) != 2 {
 		t.Fatalf("expected 2 root tasks, got %d", len(tasks))
 	}
@@ -136,20 +135,17 @@ func TestProperty22_DownstreamSchedulingOnDependencySatisfied(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 只有 a 应该被入队
 	tasks, _ := s.GetTasksByWorkflow(inst.InstanceID)
 	if len(tasks) != 1 || tasks[0].NodeID != "a" {
 		t.Fatalf("expected only task a, got %v", tasks)
 	}
 
-	// 完成 task a
 	taskAID := tasks[0].TaskID
 	s.UpdateTaskStatus(taskAID, "completed", map[string]string{"out": "done"}, "")
 	if err := e.OnTaskCompleted(taskAID); err != nil {
 		t.Fatal(err)
 	}
 
-	// 现在 b 应该被入队
 	tasks, _ = s.GetTasksByWorkflow(inst.InstanceID)
 	if len(tasks) != 2 {
 		t.Fatalf("expected 2 tasks after completing a, got %d", len(tasks))
@@ -161,7 +157,6 @@ func TestProperty22_DownstreamSchedulingOnDependencySatisfied(t *testing.T) {
 func TestProperty23_WorkflowStatusDerivation(t *testing.T) {
 	e, s := newTestWorkflowEngine(t)
 
-	// 测试失败场景
 	def := model.WorkflowDefinition{
 		ID: "status-test", Name: "st",
 		Nodes: []model.WorkflowNode{
@@ -178,7 +173,6 @@ func TestProperty23_WorkflowStatusDerivation(t *testing.T) {
 	tasks, _ := s.GetTasksByWorkflow(inst.InstanceID)
 	taskAID := tasks[0].TaskID
 
-	// 永久失败
 	s.UpdateTaskStatus(taskAID, "failed", nil, "permanent error")
 	if err := e.OnTaskPermanentlyFailed(taskAID); err != nil {
 		t.Fatal(err)
@@ -196,15 +190,15 @@ func TestProperty23_WorkflowStatusDerivation(t *testing.T) {
 // Property 24: 工作流定义序列化往返
 // **Validates: Requirements 14.8**
 func TestProperty24_WorkflowDefinitionSerializationRoundTrip(t *testing.T) {
-	rapid.Check(t, func(t *rapid.T) {
-		n := rapid.IntRange(1, 4).Draw(t, "nodeCount")
+	rapid.Check(t, func(rt *rapid.T) {
+		n := rapid.IntRange(1, 4).Draw(rt, "nodeCount")
 		nodes := make([]model.WorkflowNode, n)
 		for i := 0; i < n; i++ {
 			nodes[i] = model.WorkflowNode{
-				ID:           rapid.StringMatching(`^n[a-z]{2}$`).Draw(t, "nodeID"),
-				Type:         rapid.StringMatching(`^[a-z]{3,6}$`).Draw(t, "type"),
-				Capabilities: []string{rapid.StringMatching(`^[a-z]{3}$`).Draw(t, "cap")},
-				Priority:     rapid.IntRange(0, 10).Draw(t, "prio"),
+				ID:           "n" + rapid.StringMatching("[a-z]{2}").Draw(rt, "nodeID"),
+				Type:         rapid.StringMatching("[a-z]{3,6}").Draw(rt, "type"),
+				Capabilities: []string{rapid.StringMatching("[a-z]{3}").Draw(rt, "cap")},
+				Priority:     rapid.IntRange(0, 10).Draw(rt, "prio"),
 			}
 		}
 		var edges []model.WorkflowEdge
@@ -213,25 +207,25 @@ func TestProperty24_WorkflowDefinitionSerializationRoundTrip(t *testing.T) {
 		}
 
 		def := model.WorkflowDefinition{
-			ID:    rapid.StringMatching(`^wf-[a-z]{3}$`).Draw(t, "defID"),
-			Name:  rapid.StringMatching(`^[a-z]{3,8}$`).Draw(t, "name"),
+			ID:    "wf-" + rapid.StringMatching("[a-z]{3}").Draw(rt, "defID"),
+			Name:  rapid.StringMatching("[a-z]{3,8}").Draw(rt, "name"),
 			Nodes: nodes,
 			Edges: edges,
 		}
 
 		data, err := json.Marshal(def)
 		if err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		var got model.WorkflowDefinition
 		if err := json.Unmarshal(data, &got); err != nil {
-			t.Fatal(err)
+			rt.Fatal(err)
 		}
 		if got.ID != def.ID || got.Name != def.Name {
-			t.Fatalf("round-trip mismatch: %+v vs %+v", def, got)
+			rt.Fatalf("round-trip mismatch: %+v vs %+v", def, got)
 		}
 		if len(got.Nodes) != len(def.Nodes) || len(got.Edges) != len(def.Edges) {
-			t.Fatalf("round-trip count mismatch")
+			rt.Fatalf("round-trip count mismatch")
 		}
 	})
 }
@@ -262,6 +256,3 @@ func TestWorkflowCompletedOnAllTasksDone(t *testing.T) {
 		t.Fatalf("workflow should be completed, got %s", wf.Status)
 	}
 }
-
-// Ensure unused import is used
-var _ = time.Now
