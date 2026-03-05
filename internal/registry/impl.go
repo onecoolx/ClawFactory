@@ -10,13 +10,13 @@ import (
 	"github.com/clawfactory/clawfactory/internal/store"
 )
 
-// StoreRegistry 基于 StateStore 的注册中心实现
+// StoreRegistry is the StateStore-based registry implementation.
 type StoreRegistry struct {
 	store store.StateStore
 	mu    sync.RWMutex
 }
 
-// NewStoreRegistry 创建注册中心
+// NewStoreRegistry creates a new registry.
 func NewStoreRegistry(s store.StateStore) *StoreRegistry {
 	return &StoreRegistry{store: s}
 }
@@ -39,10 +39,10 @@ func (r *StoreRegistry) Register(req model.RegisterRequest) (model.AgentInfo, er
 
 	agentID := generateAgentID(req.Name, req.Version)
 
-	// 检查是否已注册（幂等性）
+	// Check if already registered (idempotency)
 	existing, err := r.store.GetAgent(agentID)
 	if err == nil && existing.AgentID != "" {
-		// 已存在，恢复为 online
+		// Already exists, restore to online
 		if existing.Status == "offline" {
 			r.store.UpdateAgentStatus(agentID, "online", time.Now())
 			existing.Status = "online"
@@ -58,7 +58,7 @@ func (r *StoreRegistry) Register(req model.RegisterRequest) (model.AgentInfo, er
 		Version:       req.Version,
 		Status:        "online",
 		LastHeartbeat: now,
-		Roles:         []string{"developer_agent"}, // 默认角色
+		Roles:         []string{"developer_agent"}, // default role
 		RegisteredAt:  now,
 	}
 	if err := r.store.SaveAgent(agent); err != nil {
@@ -98,7 +98,7 @@ func (r *StoreRegistry) Deregister(agentID string) error {
 	return r.store.UpdateAgentStatus(agentID, "deregistered", time.Now())
 }
 
-// CheckAndMarkOffline 检查并标记超时智能体为 offline
+// CheckAndMarkOffline checks and marks timed-out agents as offline.
 func (r *StoreRegistry) CheckAndMarkOffline(timeout time.Duration) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

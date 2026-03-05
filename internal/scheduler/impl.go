@@ -9,38 +9,38 @@ import (
 	"github.com/clawfactory/clawfactory/internal/taskqueue"
 )
 
-// StoreScheduler 基于 StateStore 的调度器实现
+// StoreScheduler is the StateStore-based scheduler implementation.
 type StoreScheduler struct {
 	store store.StateStore
 	queue taskqueue.TaskQueue
 }
 
-// NewStoreScheduler 创建调度器
+// NewStoreScheduler creates a new scheduler.
 func NewStoreScheduler(s store.StateStore, q taskqueue.TaskQueue) *StoreScheduler {
 	return &StoreScheduler{store: s, queue: q}
 }
 
-// AssignTask 为指定智能体分配匹配的任务
+// AssignTask assigns a matching task to the specified agent.
 func (s *StoreScheduler) AssignTask(agentID string, capabilities []string) (*model.Task, error) {
-	// 验证智能体状态
+	// Verify agent status
 	agent, err := s.store.GetAgent(agentID)
 	if err != nil {
 		return nil, fmt.Errorf("agent not found: %w", err)
 	}
 	if agent.Status != "online" {
-		return nil, nil // 非 online 智能体不分配任务
+		return nil, nil // non-online agents do not receive tasks
 	}
 
-	// 从队列中按能力匹配出队
+	// Dequeue from queue by capability match
 	task, err := s.queue.Dequeue(capabilities)
 	if err != nil {
 		return nil, fmt.Errorf("dequeue: %w", err)
 	}
 	if task == nil {
-		return nil, nil // 无匹配任务
+		return nil, nil // no matching task
 	}
 
-	// 更新任务状态为 assigned
+	// Update task status to assigned
 	task.Status = "assigned"
 	task.AssignedTo = agentID
 	task.UpdatedAt = time.Now()
@@ -52,7 +52,7 @@ func (s *StoreScheduler) AssignTask(agentID string, capabilities []string) (*mod
 	return task, nil
 }
 
-// RequeueTask 将任务重新入队（状态回到 pending）
+// RequeueTask requeues a task (status back to pending).
 func (s *StoreScheduler) RequeueTask(taskID string) error {
 	return s.queue.UpdateStatus(taskID, "pending", nil, "")
 }

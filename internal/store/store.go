@@ -1,4 +1,4 @@
-// Package store 定义状态存储接口，当前实现为 SQLite
+// Package store defines the state store interface, currently implemented with SQLite.
 package store
 
 import (
@@ -7,33 +7,33 @@ import (
 	"github.com/clawfactory/clawfactory/internal/model"
 )
 
-// StateStore 状态存储接口
+// StateStore is the state storage interface.
 type StateStore interface {
-	// 智能体状态
+	// Agent state
 	SaveAgent(agent model.AgentInfo) error
 	GetAgent(agentID string) (model.AgentInfo, error)
 	ListAgents() ([]model.AgentInfo, error)
 	UpdateAgentStatus(agentID string, status string, lastHeartbeat time.Time) error
 
-	// 任务状态
+	// Task state
 	SaveTask(task model.Task) error
 	GetTask(taskID string) (model.Task, error)
 	GetTasksByWorkflow(workflowID string) ([]model.Task, error)
 	UpdateTaskStatus(taskID string, status string, output map[string]string, errMsg string) error
 
-	// 工作流状态
+	// Workflow state
 	SaveWorkflow(instance model.WorkflowInstance, definition model.WorkflowDefinition) error
 	GetWorkflow(instanceID string) (model.WorkflowInstance, model.WorkflowDefinition, error)
 	UpdateWorkflowStatus(instanceID string, status string) error
 
-	// 日志
+	// Logs
 	SaveLog(entry model.LogEntry) error
 	GetLogs(agentID string, taskID string, since time.Time, until time.Time) ([]model.LogEntry, error)
 
-	// 产出物元数据
+	// Artifact metadata
 	SaveArtifact(artifact model.Artifact) error
 	GetArtifacts(workflowID string) ([]model.Artifact, error)
 
-	// 审计日志
+	// Audit logs
 	SaveAuditLog(entry model.AuditLogEntry) error
 }

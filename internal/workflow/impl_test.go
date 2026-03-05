@@ -30,7 +30,7 @@ func newTestWorkflowEngine(t *testing.T) (*StoreWorkflowEngine, *store.SQLiteSto
 	return NewStoreWorkflowEngine(s, q), s
 }
 
-// Property 20: DAG 验证正确性
+// Property 20: DAG validation correctness
 // **Validates: Requirements 14.2**
 func TestProperty20_DAGValidation(t *testing.T) {
 	e, _ := newTestWorkflowEngine(t)
@@ -54,12 +54,12 @@ func TestProperty20_DAGValidation(t *testing.T) {
 			n := rapid.IntRange(2, 5).Draw(rt, "nodeCount")
 			nodes := make([]model.WorkflowNode, n)
 			ids := make([]string, n)
-			// 使用索引确保节点 ID 唯一
+			// Use index to ensure unique node IDs
 			for i := 0; i < n; i++ {
 				ids[i] = fmt.Sprintf("n%d", i)
 				nodes[i] = model.WorkflowNode{ID: ids[i], Type: "t", Capabilities: []string{"c"}}
 			}
-			// 只添加前向边（保证无环）
+			// Only add forward edges (guarantees acyclic)
 			var edges []model.WorkflowEdge
 			for i := 0; i < n-1; i++ {
 				edges = append(edges, model.WorkflowEdge{From: ids[i], To: ids[i+1]})
@@ -77,7 +77,7 @@ func TestProperty20_DAGValidation(t *testing.T) {
 	})
 }
 
-// Property 21: 工作流起始任务调度
+// Property 21: Workflow root task scheduling
 // **Validates: Requirements 14.3**
 func TestProperty21_WorkflowRootTaskScheduling(t *testing.T) {
 	e, s := newTestWorkflowEngine(t)
@@ -116,7 +116,7 @@ func TestProperty21_WorkflowRootTaskScheduling(t *testing.T) {
 	}
 }
 
-// Property 22: 下游任务依赖满足后调度
+// Property 22: Downstream task scheduling after dependency satisfaction
 // **Validates: Requirements 14.4**
 func TestProperty22_DownstreamSchedulingOnDependencySatisfied(t *testing.T) {
 	e, s := newTestWorkflowEngine(t)
@@ -152,7 +152,7 @@ func TestProperty22_DownstreamSchedulingOnDependencySatisfied(t *testing.T) {
 	}
 }
 
-// Property 23: 工作流状态推导
+// Property 23: Workflow status derivation
 // **Validates: Requirements 14.5, 14.6**
 func TestProperty23_WorkflowStatusDerivation(t *testing.T) {
 	e, s := newTestWorkflowEngine(t)
@@ -187,7 +187,7 @@ func TestProperty23_WorkflowStatusDerivation(t *testing.T) {
 	}
 }
 
-// Property 24: 工作流定义序列化往返
+// Property 24: Workflow definition serialization round-trip
 // **Validates: Requirements 14.8**
 func TestProperty24_WorkflowDefinitionSerializationRoundTrip(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {

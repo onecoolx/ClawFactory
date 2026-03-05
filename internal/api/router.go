@@ -5,7 +5,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// NewRouter 创建并配置 HTTP 路由
+// NewRouter creates and configures the HTTP router.
 func NewRouter(srv *Server, validTokens []string) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)

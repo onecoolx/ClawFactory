@@ -1,4 +1,4 @@
-"""设计智能体：基于需求文档，输出技术设计方案"""
+"""Design agent: based on requirement documents, outputs technical design proposals"""
 import asyncio
 import os
 from openai import AsyncOpenAI
@@ -17,7 +17,11 @@ class DesignAgent(BaseAgent):
 
     async def execute_task(self, task: dict) -> dict:
         input_data = task.get("input", {})
-        prompt = f"请根据以下需求文档，输出详细的技术设计方案（包含架构设计、数据模型、接口设计、技术选型）：\n\n{input_data}"
+        prompt = (
+            "Based on the following requirement document, produce a detailed technical design proposal "
+            "(including architecture design, data model, API design, and technology selection):\n\n"
+            f"{input_data}"
+        )
 
         response = await self.llm.chat.completions.create(
             model="gpt-4o-mini",

@@ -25,7 +25,7 @@ func newTestScheduler(t *testing.T) (*StoreScheduler, *store.SQLiteStore) {
 	}
 	t.Cleanup(func() { s.Close() })
 
-	// 创建 workflow
+	// Create workflow
 	s.SaveWorkflow(
 		model.WorkflowInstance{InstanceID: "wf-sched", DefinitionID: "def-1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		model.WorkflowDefinition{ID: "def-1", Name: "test"},
@@ -43,11 +43,11 @@ func seedTestAgent(s *store.SQLiteStore, agentID string, caps []string, status s
 	})
 }
 
-// Property 5: 任务分配能力匹配
+// Property 5: Task assignment capability match
 // **Validates: Requirements 3.1, 7.1**
 func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
-		// 每次迭代使用独立的调度器和存储，避免跨迭代状态污染
+		// Use independent scheduler and store per iteration to avoid cross-iteration state pollution
 		sched, s := newTestScheduler(t)
 
 		agentCaps := []string{rapid.SampledFrom([]string{"coding", "testing", "design"}).Draw(rt, "agentCap")}
@@ -82,7 +82,7 @@ func TestProperty5_TaskAssignmentCapabilityMatch(t *testing.T) {
 	})
 }
 
-// Property 6: 任务分配状态流转
+// Property 6: Task assignment status transition
 // **Validates: Requirements 7.4, 11.3**
 func TestProperty6_TaskAssignmentStatusTransition(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
@@ -114,7 +114,7 @@ func TestProperty6_TaskAssignmentStatusTransition(t *testing.T) {
 	})
 }
 
-// Property 11: 负载均衡调度
+// Property 11: Load balancing scheduling
 // **Validates: Requirements 7.2**
 func TestProperty11_LoadBalancing(t *testing.T) {
 	sched, s := newTestScheduler(t)
@@ -135,7 +135,7 @@ func TestProperty11_LoadBalancing(t *testing.T) {
 	}
 }
 
-// Property 12: 无匹配智能体时任务保留
+// Property 12: Task retained when no matching agent
 // **Validates: Requirements 7.3**
 func TestProperty12_NoMatchTaskRetained(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
@@ -146,7 +146,7 @@ func TestProperty12_NoMatchTaskRetained(t *testing.T) {
 		q := taskqueue.NewStoreBackedQueue(s)
 		q.Enqueue(model.Task{
 			TaskID: taskID, WorkflowID: "wf-sched", NodeID: "n1", Type: "test",
-			Capabilities: []string{"analysis"}, // 不匹配 coding
+			Capabilities: []string{"analysis"}, // does not match coding
 			Input: map[string]string{}, Output: map[string]string{},
 		})
 

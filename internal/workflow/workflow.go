@@ -1,9 +1,9 @@
-// Package workflow 实现工作流引擎，管理 DAG 工作流的生命周期
+// Package workflow implements the workflow engine for managing DAG workflow lifecycles.
 package workflow
 
 import "github.com/clawfactory/clawfactory/internal/model"
 
-// WorkflowEngine 工作流引擎接口
+// WorkflowEngine is the workflow engine interface.
 type WorkflowEngine interface {
 	SubmitWorkflow(def model.WorkflowDefinition) (model.WorkflowInstance, error)
 	ValidateDAG(def model.WorkflowDefinition) error

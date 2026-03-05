@@ -45,7 +45,7 @@ func (s *Server) updateTaskStatusHandler(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
-	// 触发工作流引擎回调
+	// Trigger workflow engine callback
 	if req.Status == "completed" {
 		s.Workflow.OnTaskCompleted(taskID)
 	}

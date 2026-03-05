@@ -10,13 +10,13 @@ import (
 	"github.com/clawfactory/clawfactory/internal/store"
 )
 
-// FileSystemMemory 基于文件系统的共享记忆层实现
+// FileSystemMemory is the file-system-based shared memory layer implementation.
 type FileSystemMemory struct {
 	dataDir string
 	store   store.StateStore
 }
 
-// NewFileSystemMemory 创建文件系统共享记忆层
+// NewFileSystemMemory creates a new file-system shared memory layer.
 func NewFileSystemMemory(dataDir string, s store.StateStore) *FileSystemMemory {
 	return &FileSystemMemory{dataDir: dataDir, store: s}
 }

@@ -26,7 +26,7 @@ func newTestRegistry(t *testing.T) (*StoreRegistry, *store.SQLiteStore) {
 	return NewStoreRegistry(s), s
 }
 
-// Property 1: 注册幂等性
+// Property 1: Registration idempotency
 // **Validates: Requirements 1.1, 1.2**
 func TestProperty1_RegisterIdempotency(t *testing.T) {
 	reg, _ := newTestRegistry(t)
@@ -60,7 +60,7 @@ func TestProperty1_RegisterIdempotency(t *testing.T) {
 	})
 }
 
-// Property 2: 无效注册请求被拒绝
+// Property 2: Invalid registration requests are rejected
 // **Validates: Requirements 1.3**
 func TestProperty2_InvalidRegistrationRejected(t *testing.T) {
 	reg, _ := newTestRegistry(t)
@@ -80,7 +80,7 @@ func TestProperty2_InvalidRegistrationRejected(t *testing.T) {
 	})
 }
 
-// Property 3: 心跳更新时间戳
+// Property 3: Heartbeat updates timestamp
 // **Validates: Requirements 2.2**
 func TestProperty3_HeartbeatUpdatesTimestamp(t *testing.T) {
 	reg, _ := newTestRegistry(t)
@@ -109,7 +109,7 @@ func TestProperty3_HeartbeatUpdatesTimestamp(t *testing.T) {
 	})
 }
 
-// Property 4: 心跳超时与恢复往返
+// Property 4: Heartbeat timeout and recovery round-trip
 // **Validates: Requirements 2.3, 2.4**
 func TestProperty4_HeartbeatTimeoutAndRecovery(t *testing.T) {
 	reg, s := newTestRegistry(t)
@@ -124,7 +124,7 @@ func TestProperty4_HeartbeatTimeoutAndRecovery(t *testing.T) {
 			rt.Fatal(err)
 		}
 
-		// 模拟心跳超时：将 last_heartbeat 设为很久以前
+		// Simulate heartbeat timeout: set last_heartbeat to long ago
 		s.UpdateAgentStatus(agent.AgentID, "online", time.Now().Add(-10*time.Minute))
 
 		marked, err := reg.CheckAndMarkOffline(90 * time.Second)
@@ -145,7 +145,7 @@ func TestProperty4_HeartbeatTimeoutAndRecovery(t *testing.T) {
 			rt.Fatalf("status should be offline, got %s", a.Status)
 		}
 
-		// 恢复：重新心跳
+		// Recovery: heartbeat again
 		if err := reg.Heartbeat(agent.AgentID); err != nil {
 			rt.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func TestProperty4_HeartbeatTimeoutAndRecovery(t *testing.T) {
 	})
 }
 
-// Property 10: 注销后不再分配任务
+// Property 10: Deregistered agent no longer receives tasks
 // **Validates: Requirements 6.3**
 func TestProperty10_DeregisteredAgentNoTasks(t *testing.T) {
 	reg, _ := newTestRegistry(t)

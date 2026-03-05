@@ -58,12 +58,12 @@ func seedAgent(s *store.SQLiteStore, agentID string, roles []string, caps []stri
 	})
 }
 
-// Property 13: 重试策略正确性
+// Property 13: Retry policy correctness
 // **Validates: Requirements 8.3, 8.4**
 func TestProperty13_RetryPolicy(t *testing.T) {
 	pe, s := newTestPolicyEngine(t)
 
-	// 创建 workflow
+	// Create workflow
 	s.SaveWorkflow(
 		model.WorkflowInstance{InstanceID: "wf-r", DefinitionID: "def-1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		model.WorkflowDefinition{ID: "def-1", Name: "test"},
@@ -90,7 +90,7 @@ func TestProperty13_RetryPolicy(t *testing.T) {
 	})
 }
 
-// Property 14: 权限验证与审计
+// Property 14: Authorization and audit
 // **Validates: Requirements 9.3, 9.4**
 func TestProperty14_AuthorizationAndAudit(t *testing.T) {
 	pe, s := newTestPolicyEngine(t)
@@ -122,7 +122,7 @@ func TestProperty14_AuthorizationAndAudit(t *testing.T) {
 	})
 }
 
-// Property 15: 工具白名单与速率限制
+// Property 15: Tool whitelist and rate limiting
 // **Validates: Requirements 10.2, 10.5**
 func TestProperty15_ToolWhitelistAndRateLimit(t *testing.T) {
 	pe, s := newTestPolicyEngine(t)

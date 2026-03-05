@@ -26,13 +26,13 @@ func newTestStore(t *testing.T) *SQLiteStore {
 	return s
 }
 
-// Property 7: 任务状态持久化往返
+// Property 7: Task status persistence round-trip
 // **Validates: Requirements 3.5**
 func TestProperty7_TaskStatusRoundTrip(t *testing.T) {
 	s := newTestStore(t)
 
 	rapid.Check(t, func(rt *rapid.T) {
-		// 先创建 workflow instance（外键约束）
+		// Create workflow instance first (foreign key constraint)
 		wfID := "wf-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "workflowID")
 		inst := model.WorkflowInstance{
 			InstanceID: wfID, DefinitionID: "def-1", Status: "running",
@@ -79,7 +79,7 @@ func TestProperty7_TaskStatusRoundTrip(t *testing.T) {
 	})
 }
 
-// Property 9: 日志存储与过滤
+// Property 9: Log storage and filtering
 // **Validates: Requirements 5.2, 5.3**
 func TestProperty9_LogStorageAndFiltering(t *testing.T) {
 	s := newTestStore(t)
@@ -115,12 +115,12 @@ func TestProperty9_LogStorageAndFiltering(t *testing.T) {
 	})
 }
 
-// Property 19: 按 workflow_id 查询任务完整性
+// Property 19: Task query completeness by workflow_id
 // **Validates: Requirements 13.4**
 func TestProperty19_TasksByWorkflowCompleteness(t *testing.T) {
 	s := newTestStore(t)
 
-	// 创建两个 workflow
+	// Create two workflows
 	for _, wfID := range []string{"wf-aaa", "wf-bbb"} {
 		inst := model.WorkflowInstance{
 			InstanceID: wfID, DefinitionID: "def-1", Status: "running",
@@ -134,7 +134,7 @@ func TestProperty19_TasksByWorkflowCompleteness(t *testing.T) {
 		nA := rapid.IntRange(1, 5).Draw(rt, "tasksA")
 		nB := rapid.IntRange(1, 5).Draw(rt, "tasksB")
 
-		// 清理之前的任务数据（通过使用唯一前缀）
+		// Clean previous task data (using unique prefix)
 		prefix := rapid.StringMatching("[a-z]{3}").Draw(rt, "prefix")
 
 		for i := 0; i < nA; i++ {

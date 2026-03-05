@@ -13,16 +13,16 @@ import (
 	"github.com/clawfactory/clawfactory/internal/store"
 )
 
-// ConfigPolicyEngine 基于配置文件的策略引擎实现
+// ConfigPolicyEngine is the configuration-file-based policy engine implementation.
 type ConfigPolicyEngine struct {
 	config model.PolicyConfig
 	store  store.StateStore
 	mu     sync.RWMutex
-	// 速率限制：agent_id -> tool_name -> []time.Time (调用时间戳)
+	// Rate limits: agent_id -> tool_name -> []time.Time (call timestamps)
 	rateLimits map[string]map[string][]time.Time
 }
 
-// NewConfigPolicyEngine 从 JSON 配置文件创建策略引擎
+// NewConfigPolicyEngine creates a policy engine from a JSON config file.
 func NewConfigPolicyEngine(configPath string, s store.StateStore) (*ConfigPolicyEngine, error) {
 	data, err := os.ReadFile(filepath.Clean(configPath))
 	if err != nil {
@@ -39,7 +39,7 @@ func NewConfigPolicyEngine(configPath string, s store.StateStore) (*ConfigPolicy
 	}, nil
 }
 
-// NewConfigPolicyEngineFromConfig 从已解析的配置创建策略引擎
+// NewConfigPolicyEngineFromConfig creates a policy engine from a parsed config.
 func NewConfigPolicyEngineFromConfig(config model.PolicyConfig, s store.StateStore) *ConfigPolicyEngine {
 	return &ConfigPolicyEngine{
 		config:     config,
@@ -73,7 +73,7 @@ func (p *ConfigPolicyEngine) Authorize(req model.AuthorizeRequest) model.Authori
 		return resp
 	}
 
-	// 检查智能体角色权限
+	// Check agent role permissions
 	for _, role := range agent.Roles {
 		roleDef, ok := p.config.Roles[role]
 		if !ok {
@@ -141,7 +141,7 @@ func (p *ConfigPolicyEngine) IsToolAllowed(agentID string, toolName string) bool
 			}
 		}
 	}
-	// 如果不在白名单中，记录审计日志
+	// If not in whitelist, log audit entry
 	p.store.SaveAuditLog(model.AuditLogEntry{
 		Timestamp: time.Now(), AgentID: agentID, Action: "call_tool",
 		Resource: toolName, Allowed: false, Reason: "tool not in whitelist",
@@ -160,7 +160,7 @@ func (p *ConfigPolicyEngine) CheckRateLimit(agentID string, toolName string) boo
 		p.rateLimits[agentID] = make(map[string][]time.Time)
 	}
 
-	// 清理过期记录
+	// Clean expired records
 	calls := p.rateLimits[agentID][toolName]
 	var valid []time.Time
 	for _, t := range calls {
@@ -169,7 +169,7 @@ func (p *ConfigPolicyEngine) CheckRateLimit(agentID string, toolName string) boo
 		}
 	}
 
-	// 获取速率限制
+	// Get rate limit
 	agent, err := p.store.GetAgent(agentID)
 	if err != nil {
 		return false
@@ -182,7 +182,7 @@ func (p *ConfigPolicyEngine) CheckRateLimit(agentID string, toolName string) boo
 		}
 	}
 	if limit == 0 {
-		limit = 60 // 默认
+		limit = 60 // default
 	}
 
 	if len(valid) >= limit {

@@ -9,20 +9,20 @@ import (
 	"github.com/clawfactory/clawfactory/internal/taskqueue"
 )
 
-// StoreWorkflowEngine 基于 StateStore 的工作流引擎实现
+// StoreWorkflowEngine is the StateStore-based workflow engine implementation.
 type StoreWorkflowEngine struct {
 	store store.StateStore
 	queue taskqueue.TaskQueue
 }
 
-// NewStoreWorkflowEngine 创建工作流引擎
+// NewStoreWorkflowEngine creates a new workflow engine.
 func NewStoreWorkflowEngine(s store.StateStore, q taskqueue.TaskQueue) *StoreWorkflowEngine {
 	return &StoreWorkflowEngine{store: s, queue: q}
 }
 
-// ValidateDAG 验证工作流定义是否为合法 DAG（无环检测）
+// ValidateDAG validates that the workflow definition is a valid DAG (cycle detection).
 func (e *StoreWorkflowEngine) ValidateDAG(def model.WorkflowDefinition) error {
-	// 构建邻接表和入度表
+	// Build adjacency list and in-degree map
 	adj := make(map[string][]string)
 	inDegree := make(map[string]int)
 	nodeSet := make(map[string]bool)
@@ -39,7 +39,7 @@ func (e *StoreWorkflowEngine) ValidateDAG(def model.WorkflowDefinition) error {
 		inDegree[edge.To]++
 	}
 
-	// 拓扑排序（Kahn's algorithm）
+	// Topological sort (Kahn's algorithm)
 	var queue []string
 	for id, deg := range inDegree {
 		if deg == 0 {
@@ -66,7 +66,7 @@ func (e *StoreWorkflowEngine) ValidateDAG(def model.WorkflowDefinition) error {
 	return nil
 }
 
-// SubmitWorkflow 提交工作流：验证 → 持久化 → 调度起始任务
+// SubmitWorkflow submits a workflow: validate -> persist -> schedule root tasks.
 func (e *StoreWorkflowEngine) SubmitWorkflow(def model.WorkflowDefinition) (model.WorkflowInstance, error) {
 	if err := e.ValidateDAG(def); err != nil {
 		return model.WorkflowInstance{}, fmt.Errorf("invalid DAG: %w", err)
@@ -86,7 +86,7 @@ func (e *StoreWorkflowEngine) SubmitWorkflow(def model.WorkflowDefinition) (mode
 		return model.WorkflowInstance{}, fmt.Errorf("save workflow: %w", err)
 	}
 
-	// 找到起始节点（入度为 0）并入队
+	// Find root nodes (in-degree 0) and enqueue them
 	inDegree := make(map[string]int)
 	for _, n := range def.Nodes {
 		inDegree[n.ID] = 0
@@ -116,7 +116,7 @@ func (e *StoreWorkflowEngine) SubmitWorkflow(def model.WorkflowDefinition) (mode
 	return instance, nil
 }
 
-// OnTaskCompleted 任务完成回调
+// OnTaskCompleted is the task completion callback.
 func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 	task, err := e.store.GetTask(taskID)
 	if err != nil {
@@ -131,7 +131,7 @@ func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 		return nil
 	}
 
-	// 找到下游节点
+	// Find downstream nodes
 	downstream := make(map[string]bool)
 	for _, edge := range def.Edges {
 		if edge.From == task.NodeID {
@@ -139,7 +139,7 @@ func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 		}
 	}
 
-	// 检查下游节点的所有依赖是否满足
+	// Check if all dependencies of downstream nodes are satisfied
 	tasks, err := e.store.GetTasksByWorkflow(task.WorkflowID)
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 			}
 		}
 		if allDepsCompleted {
-			// 找到节点定义
+			// Find node definition
 			for _, node := range def.Nodes {
 				if node.ID == nodeID {
 					newTask := model.Task{
@@ -182,18 +182,18 @@ func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 		}
 	}
 
-	// 检查是否所有任务完成
+	// Check if all tasks are completed
 	allCompleted := true
 	for _, t := range tasks {
 		if t.TaskID == taskID {
-			continue // 当前任务已完成
+			continue // current task is already completed
 		}
 		if t.Status != "completed" {
 			allCompleted = false
 			break
 		}
 	}
-	// 还需要检查是否所有节点都有对应任务
+	// Also check if all nodes have corresponding tasks
 	if allCompleted && len(tasks) >= len(def.Nodes) {
 		e.store.UpdateWorkflowStatus(task.WorkflowID, "completed")
 	}
@@ -201,7 +201,7 @@ func (e *StoreWorkflowEngine) OnTaskCompleted(taskID string) error {
 	return nil
 }
 
-// OnTaskPermanentlyFailed 任务永久失败回调
+// OnTaskPermanentlyFailed is the permanent task failure callback.
 func (e *StoreWorkflowEngine) OnTaskPermanentlyFailed(taskID string) error {
 	task, err := e.store.GetTask(taskID)
 	if err != nil {
@@ -210,7 +210,7 @@ func (e *StoreWorkflowEngine) OnTaskPermanentlyFailed(taskID string) error {
 	return e.store.UpdateWorkflowStatus(task.WorkflowID, "failed")
 }
 
-// GetWorkflowStatus 获取工作流状态
+// GetWorkflowStatus returns the workflow status.
 func (e *StoreWorkflowEngine) GetWorkflowStatus(instanceID string) (model.WorkflowInstance, error) {
 	inst, _, err := e.store.GetWorkflow(instanceID)
 	return inst, err

@@ -7,11 +7,11 @@ import (
 	"pgregory.net/rapid"
 )
 
-// Property 25: CLI 输出格式一致性
+// Property 25: CLI output format consistency
 // **Validates: Requirements 16.6**
 func TestProperty25_CLIOutputFormatConsistency(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		// 生成随机的 agent 列表响应数据
+		// Generate random agent list response data
 		n := rapid.IntRange(0, 5).Draw(t, "agentCount")
 		agents := make([]map[string]interface{}, n)
 		for i := 0; i < n; i++ {
@@ -24,7 +24,7 @@ func TestProperty25_CLIOutputFormatConsistency(t *testing.T) {
 			}
 		}
 
-		// 验证 JSON 序列化是有效的 JSON
+		// Verify JSON serialization produces valid JSON
 		data, err := json.Marshal(agents)
 		if err != nil {
 			t.Fatalf("failed to marshal agents: %v", err)
@@ -33,7 +33,7 @@ func TestProperty25_CLIOutputFormatConsistency(t *testing.T) {
 			t.Fatal("output is not valid JSON")
 		}
 
-		// 验证反序列化
+		// Verify deserialization
 		var parsed []map[string]interface{}
 		if err := json.Unmarshal(data, &parsed); err != nil {
 			t.Fatalf("failed to unmarshal: %v", err)

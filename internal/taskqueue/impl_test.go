@@ -24,7 +24,7 @@ func newTestQueue(t *testing.T) *StoreBackedQueue {
 	}
 	t.Cleanup(func() { s.Close() })
 
-	// 创建 workflow instance 以满足外键
+	// Create workflow instance to satisfy foreign key
 	s.SaveWorkflow(
 		model.WorkflowInstance{InstanceID: "wf-test", DefinitionID: "def-1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		model.WorkflowDefinition{ID: "def-1", Name: "test"},
@@ -32,7 +32,7 @@ func newTestQueue(t *testing.T) *StoreBackedQueue {
 	return NewStoreBackedQueue(s)
 }
 
-// Property 16: 任务入队初始状态
+// Property 16: Enqueue initial status
 // **Validates: Requirements 11.2**
 func TestProperty16_EnqueueInitialStatus(t *testing.T) {
 	q := newTestQueue(t)
@@ -42,7 +42,7 @@ func TestProperty16_EnqueueInitialStatus(t *testing.T) {
 		task := model.Task{
 			TaskID: taskID, WorkflowID: "wf-test", NodeID: "n1", Type: "test",
 			Capabilities: []string{"cap1"}, Input: map[string]string{}, Output: map[string]string{},
-			Status: "whatever", // 入队时应被覆盖为 pending
+			Status: "whatever", // should be overridden to pending on enqueue
 		}
 		if err := q.Enqueue(task); err != nil {
 			rt.Fatal(err)
@@ -57,13 +57,13 @@ func TestProperty16_EnqueueInitialStatus(t *testing.T) {
 	})
 }
 
-// Property 17: 任务优先级排序
+// Property 17: Task priority ordering
 // **Validates: Requirements 11.4**
 func TestProperty17_TaskPriorityOrdering(t *testing.T) {
 	q := newTestQueue(t)
 
 	rapid.Check(t, func(rt *rapid.T) {
-		// 先清理：把所有 pending 任务标记为 completed
+		// Clean up: mark all pending tasks as completed
 		for {
 			task, err := q.Dequeue([]string{"cap1"})
 			if err != nil {

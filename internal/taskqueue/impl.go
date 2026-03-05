@@ -9,12 +9,12 @@ import (
 	"github.com/clawfactory/clawfactory/internal/store"
 )
 
-// StoreBackedQueue 基于 StateStore 的任务队列实现
+// StoreBackedQueue is the StateStore-based task queue implementation.
 type StoreBackedQueue struct {
 	store store.StateStore
 }
 
-// NewStoreBackedQueue 创建任务队列
+// NewStoreBackedQueue creates a new task queue.
 func NewStoreBackedQueue(s store.StateStore) *StoreBackedQueue {
 	return &StoreBackedQueue{store: s}
 }
@@ -28,13 +28,13 @@ func (q *StoreBackedQueue) Enqueue(task model.Task) error {
 	return q.store.SaveTask(task)
 }
 
-// Dequeue 按优先级和能力匹配出队
-// 从所有 pending 任务中找到能力匹配且优先级最高的任务
+// Dequeue dequeues a task by priority and capability match.
+// Finds the highest-priority pending task that matches the given capabilities.
 func (q *StoreBackedQueue) Dequeue(capabilities []string) (*model.Task, error) {
-	// 获取所有 pending 任务（通过遍历所有 workflow 的任务）
-	// 这里简化实现：直接查询 store 底层
-	// 由于 StateStore 接口不提供全局 pending 查询，我们需要通过底层实现
-	// 为了保持接口一致性，我们在 StoreBackedQueue 中直接使用 SQLite
+	// Get all pending tasks (by querying the store backend).
+	// Since the StateStore interface doesn't provide a global pending query,
+	// we need to access the underlying implementation directly.
+	// For interface consistency, we use SQLite directly in StoreBackedQueue.
 	sqlStore, ok := q.store.(*store.SQLiteStore)
 	if !ok {
 		return nil, fmt.Errorf("store backend must be SQLiteStore for Dequeue")
@@ -43,7 +43,7 @@ func (q *StoreBackedQueue) Dequeue(capabilities []string) (*model.Task, error) {
 }
 
 func (q *StoreBackedQueue) dequeueFromSQLite(s *store.SQLiteStore, capabilities []string) (*model.Task, error) {
-	// 查询所有 pending 任务，按优先级降序
+	// Query all pending tasks, ordered by priority descending
 	rows, err := s.DB().Query(
 		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
 		 FROM tasks WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`,
@@ -68,7 +68,7 @@ func (q *StoreBackedQueue) dequeueFromSQLite(s *store.SQLiteStore, capabilities 
 			return &t, nil
 		}
 	}
-	return nil, nil // 无匹配任务
+	return nil, nil // no matching task
 }
 
 func matchCapabilities(taskCaps, agentCaps []string) bool {

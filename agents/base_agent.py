@@ -1,4 +1,4 @@
-"""ARI 协议客户端基类"""
+"""ARI protocol client base class"""
 import asyncio
 import httpx
 import time
@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 
 class BaseAgent(ABC):
-    """ARI 协议客户端基类，实现注册、心跳、任务拉取等通用逻辑"""
+    """ARI protocol client base class implementing registration, heartbeat, task pulling, etc."""
 
     def __init__(self, name: str, capabilities: list[str], version: str, api_token: str):
         self.name = name
@@ -24,7 +24,7 @@ class BaseAgent(ABC):
         }
 
     async def register(self) -> str:
-        """注册到平台，返回 agent_id"""
+        """Register with the platform, returns agent_id"""
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{self.base_url}/register",
@@ -37,7 +37,7 @@ class BaseAgent(ABC):
             return self.agent_id
 
     async def heartbeat(self) -> None:
-        """发送心跳"""
+        """Send heartbeat"""
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{self.base_url}/heartbeat",
@@ -46,7 +46,7 @@ class BaseAgent(ABC):
             )
 
     async def pull_task(self) -> dict | None:
-        """拉取任务，无任务返回 None"""
+        """Pull a task, returns None if no task available"""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.base_url}/tasks",
@@ -62,7 +62,7 @@ class BaseAgent(ABC):
     async def update_task_status(
         self, task_id: str, status: str, output: dict = None, error: str = None
     ) -> None:
-        """更新任务状态"""
+        """Update task status"""
         payload = {"agent_id": self.agent_id, "status": status}
         if output:
             payload["output"] = output
@@ -76,7 +76,7 @@ class BaseAgent(ABC):
             )
 
     async def report_log(self, task_id: str, level: str, message: str) -> None:
-        """上报日志"""
+        """Report a log entry"""
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{self.base_url}/log",
@@ -92,42 +92,42 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def execute_task(self, task: dict) -> dict:
-        """执行任务，返回产出物 dict。子类实现。"""
+        """Execute a task, returns output dict. Subclasses must implement."""
         ...
 
     async def _heartbeat_loop(self):
-        """心跳定时器"""
+        """Heartbeat timer loop"""
         while True:
             try:
                 await self.heartbeat()
             except Exception as e:
-                print(f"[{self.name}] 心跳失败: {e}")
+                print(f"[{self.name}] heartbeat failed: {e}")
             await asyncio.sleep(self.heartbeat_interval)
 
     async def _task_loop(self):
-        """任务拉取循环"""
+        """Task pulling loop"""
         while True:
             try:
                 task = await self.pull_task()
                 if task:
                     task_id = task["task_id"]
-                    await self.report_log(task_id, "info", f"开始执行任务 {task_id}")
+                    await self.report_log(task_id, "info", f"starting task {task_id}")
                     await self.update_task_status(task_id, "running")
                     try:
                         output = await self.execute_task(task)
                         await self.update_task_status(task_id, "completed", output=output)
-                        await self.report_log(task_id, "info", f"任务 {task_id} 完成")
+                        await self.report_log(task_id, "info", f"task {task_id} completed")
                     except Exception as e:
                         await self.update_task_status(task_id, "failed", error=str(e))
-                        await self.report_log(task_id, "error", f"任务 {task_id} 失败: {e}")
+                        await self.report_log(task_id, "error", f"task {task_id} failed: {e}")
             except Exception as e:
-                print(f"[{self.name}] 任务拉取失败: {e}")
+                print(f"[{self.name}] task pull failed: {e}")
             await asyncio.sleep(5)
 
     async def run(self):
-        """主循环：注册 → 心跳 + 拉取任务"""
-        print(f"[{self.name}] 正在注册...")
+        """Main loop: register -> heartbeat + pull tasks"""
+        print(f"[{self.name}] registering...")
         agent_id = await self.register()
-        print(f"[{self.name}] 注册成功: {agent_id}")
+        print(f"[{self.name}] registered: {agent_id}")
 
         await asyncio.gather(self._heartbeat_loop(), self._task_loop())

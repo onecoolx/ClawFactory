@@ -10,7 +10,7 @@ import (
 	"github.com/clawfactory/clawfactory/internal/workflow"
 )
 
-// Server 持有所有依赖的 HTTP 服务
+// Server holds all dependencies for the HTTP service.
 type Server struct {
 	Store    store.StateStore
 	Registry registry.Registry

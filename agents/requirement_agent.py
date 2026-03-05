@@ -1,4 +1,4 @@
-"""需求分析智能体：接收用户需求描述，输出结构化需求文档"""
+"""Requirement analysis agent: receives user requirements, outputs structured requirement documents"""
 import asyncio
 import os
 from openai import AsyncOpenAI
@@ -17,7 +17,11 @@ class RequirementAgent(BaseAgent):
 
     async def execute_task(self, task: dict) -> dict:
         user_req = task.get("input", {}).get("user_requirement", "")
-        prompt = f"请根据以下用户需求，输出结构化的需求分析文档（包含功能需求、非功能需求、用户故事）：\n\n{user_req}"
+        prompt = (
+            "Based on the following user requirements, produce a structured requirement analysis document "
+            "(including functional requirements, non-functional requirements, and user stories):\n\n"
+            f"{user_req}"
+        )
 
         response = await self.llm.chat.completions.create(
             model="gpt-4o-mini",

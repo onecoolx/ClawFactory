@@ -1,9 +1,9 @@
-// Package taskqueue 实现任务队列，管理待执行任务的持久化队列
+// Package taskqueue implements the task queue for managing a persistent queue of pending tasks.
 package taskqueue
 
 import "github.com/clawfactory/clawfactory/internal/model"
 
-// TaskQueue 任务队列接口
+// TaskQueue is the task queue interface.
 type TaskQueue interface {
 	Enqueue(task model.Task) error
 	Dequeue(capabilities []string) (*model.Task, error)

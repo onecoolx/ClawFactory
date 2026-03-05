@@ -1,9 +1,9 @@
-// Package memory 实现共享记忆层，管理智能体之间的上下文和产出物共享
+// Package memory implements the shared memory layer for managing context and artifact sharing between agents.
 package memory
 
 import "github.com/clawfactory/clawfactory/internal/model"
 
-// SharedMemory 共享记忆层接口
+// SharedMemory is the shared memory layer interface.
 type SharedMemory interface {
 	StoreArtifact(workflowID, taskID, name string, data []byte) (model.Artifact, error)
 	GetArtifacts(workflowID string) ([]model.Artifact, error)

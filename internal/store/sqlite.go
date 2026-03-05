@@ -10,18 +10,18 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// SQLiteStore 基于 SQLite 的 StateStore 实现
+// SQLiteStore is the SQLite-based StateStore implementation.
 type SQLiteStore struct {
 	db *sql.DB
 }
 
-// NewSQLiteStore 创建并初始化 SQLite 存储
+// NewSQLiteStore creates and initializes a SQLite store.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	// 启用 WAL 模式和外键约束
+	// Enable WAL mode and foreign key constraints
 	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("set pragmas: %w", err)
@@ -34,12 +34,12 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	return s, nil
 }
 
-// DB 返回底层数据库连接（供需要直接查询的组件使用）
+// DB returns the underlying database connection (for components that need direct queries).
 func (s *SQLiteStore) DB() *sql.DB {
 	return s.db
 }
 
-// Close 关闭数据库连接
+// Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }

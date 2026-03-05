@@ -1,11 +1,11 @@
-// Package model 定义平台核心数据模型和请求/响应结构体
+// Package model defines core data models and request/response structs for the platform.
 package model
 
 import "time"
 
-// --- 核心数据模型 ---
+// --- Core Data Models ---
 
-// AgentInfo 智能体信息
+// AgentInfo represents a registered agent.
 type AgentInfo struct {
 	AgentID       string    `json:"agent_id"`
 	Name          string    `json:"name"`
@@ -17,7 +17,7 @@ type AgentInfo struct {
 	RegisteredAt  time.Time `json:"registered_at"`
 }
 
-// Task 任务
+// Task represents a unit of work in a workflow.
 type Task struct {
 	TaskID       string            `json:"task_id"`
 	WorkflowID   string            `json:"workflow_id"`
@@ -35,7 +35,7 @@ type Task struct {
 	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
-// WorkflowDefinition 工作流定义（DAG）
+// WorkflowDefinition defines a DAG workflow.
 type WorkflowDefinition struct {
 	ID    string         `json:"id"`
 	Name  string         `json:"name"`
@@ -43,7 +43,7 @@ type WorkflowDefinition struct {
 	Edges []WorkflowEdge `json:"edges"`
 }
 
-// WorkflowNode 工作流节点
+// WorkflowNode represents a node in the workflow DAG.
 type WorkflowNode struct {
 	ID           string            `json:"id"`
 	Type         string            `json:"type"`
@@ -52,13 +52,13 @@ type WorkflowNode struct {
 	Priority     int               `json:"priority,omitempty"`
 }
 
-// WorkflowEdge 工作流边（依赖关系）
+// WorkflowEdge represents a dependency edge in the DAG.
 type WorkflowEdge struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// WorkflowInstance 工作流实例
+// WorkflowInstance represents a running instance of a workflow.
 type WorkflowInstance struct {
 	InstanceID   string    `json:"instance_id"`
 	DefinitionID string    `json:"definition_id"`
@@ -67,7 +67,7 @@ type WorkflowInstance struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// Artifact 产出物
+// Artifact represents a workflow output artifact metadata entry.
 type Artifact struct {
 	WorkflowID string    `json:"workflow_id"`
 	TaskID     string    `json:"task_id"`
@@ -76,16 +76,16 @@ type Artifact struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// LogEntry 日志条目
+// LogEntry represents an agent log entry.
 type LogEntry struct {
 	AgentID   string `json:"agent_id"`
-	TaskID    string `json:"task_id,omitempty"`
-	Level     string `json:"level"` // "info", "warn", "error"
+	TaskID    string `json:"task_id"`
+	Level     string `json:"level"`
 	Message   string `json:"message"`
 	Timestamp string `json:"timestamp"`
 }
 
-// AuditLogEntry 审计日志条目
+// AuditLogEntry represents a security audit log entry.
 type AuditLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	AgentID   string    `json:"agent_id"`
@@ -95,31 +95,31 @@ type AuditLogEntry struct {
 	Reason    string    `json:"reason"`
 }
 
-// --- ARI 请求/响应结构体 ---
+// --- ARI Protocol Request/Response Structs ---
 
-// RegisterRequest 注册请求
+// RegisterRequest is the request body for agent registration.
 type RegisterRequest struct {
 	Name         string   `json:"name"`
 	Capabilities []string `json:"capabilities"`
 	Version      string   `json:"version"`
 }
 
-// RegisterResponse 注册响应
+// RegisterResponse is the response body for agent registration.
 type RegisterResponse struct {
 	AgentID string `json:"agent_id"`
 }
 
-// HeartbeatRequest 心跳请求
+// HeartbeatRequest is the request body for agent heartbeat.
 type HeartbeatRequest struct {
 	AgentID string `json:"agent_id"`
 }
 
-// HeartbeatResponse 心跳响应
+// HeartbeatResponse is the response body for agent heartbeat.
 type HeartbeatResponse struct {
 	Status string `json:"status"`
 }
 
-// TaskResponse 任务拉取响应
+// TaskResponse is the response body for task pull.
 type TaskResponse struct {
 	TaskID       string            `json:"task_id,omitempty"`
 	WorkflowID   string            `json:"workflow_id,omitempty"`
@@ -129,62 +129,59 @@ type TaskResponse struct {
 	Assigned     bool              `json:"assigned"`
 }
 
-// TaskStatusUpdate 任务状态更新请求
+// TaskStatusUpdate is the request body for updating task status.
 type TaskStatusUpdate struct {
-	AgentID string            `json:"agent_id"`
-	Status  string            `json:"status"` // "running", "completed", "failed"
-	Output  map[string]string `json:"output,omitempty"`
-	Error   string            `json:"error,omitempty"`
+	Status string            `json:"status"`
+	Output map[string]string `json:"output,omitempty"`
+	Error  string            `json:"error,omitempty"`
 }
 
-// AuthorizeRequest 授权请求
+// AuthorizeRequest is the request body for authorization check.
 type AuthorizeRequest struct {
 	AgentID  string `json:"agent_id"`
-	Action   string `json:"action"`   // "call_tool", "read_memory", "write_memory"
-	Resource string `json:"resource"` // 工具名或资源路径
+	Action   string `json:"action"`
+	Resource string `json:"resource"`
 }
 
-// AuthorizeResponse 授权响应
+// AuthorizeResponse is the response body for authorization check.
 type AuthorizeResponse struct {
 	Allowed bool   `json:"allowed"`
 	Reason  string `json:"reason,omitempty"`
 }
 
-// ErrorResponse 统一错误响应
+// ErrorResponse is the standard error response.
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
-// ErrorDetail 错误详情
+// ErrorDetail contains error code and message.
 type ErrorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// --- 策略配置结构体 ---
+// --- Policy Configuration Structs ---
 
-// PolicyConfig 策略配置（从 JSON 文件加载）
+// PolicyConfig holds the complete policy configuration.
 type PolicyConfig struct {
-	MaxRetries                 int                        `json:"max_retries"`
-	HeartbeatIntervalSeconds   int                        `json:"heartbeat_interval_seconds"`
-	HeartbeatTimeoutMultiplier int                        `json:"heartbeat_timeout_multiplier"`
-	Roles                      map[string]RoleDefinition  `json:"roles"`
-	ToolWhitelist              map[string]ToolPolicy      `json:"tool_whitelist"`
+	MaxRetries    int                       `json:"max_retries"`
+	Roles         map[string]RoleDefinition `json:"roles"`
+	ToolWhitelist map[string]ToolPolicy     `json:"tool_whitelist"`
 }
 
-// RoleDefinition 角色定义
+// RoleDefinition defines permissions for a role.
 type RoleDefinition struct {
 	Permissions []Permission `json:"permissions"`
 }
 
-// Permission 权限
+// Permission defines an access control rule.
 type Permission struct {
 	Resource string   `json:"resource"`
 	Actions  []string `json:"actions"`
 }
 
-// ToolPolicy 工具策略
+// ToolPolicy defines allowed tools and rate limits for a role.
 type ToolPolicy struct {
 	AllowedTools []string `json:"allowed_tools"`
-	RateLimit    int      `json:"rate_limit_per_minute"`
+	RateLimit    int      `json:"rate_limit"`
 }

@@ -32,7 +32,7 @@ func newTestMemory(t *testing.T) (*FileSystemMemory, string) {
 	return NewFileSystemMemory(tmpDir, s), tmpDir
 }
 
-// Property 18: 产出物存储与工作流隔离
+// Property 18: Artifact storage and workflow isolation
 // **Validates: Requirements 12.1, 12.2, 12.3**
 func TestProperty18_ArtifactWorkflowIsolation(t *testing.T) {
 	mem, _ := newTestMemory(t)

@@ -8,7 +8,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-// Property 8: Token 认证一致性
+// Property 8: Token authentication consistency
 // **Validates: Requirements 4.1, 4.3**
 func TestProperty8_TokenAuthConsistency(t *testing.T) {
 	validTokens := []string{"valid-token-1", "valid-token-2"}

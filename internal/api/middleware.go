@@ -8,7 +8,7 @@ import (
 	"github.com/clawfactory/clawfactory/internal/model"
 )
 
-// TokenAuthMiddleware 验证 API Token
+// TokenAuthMiddleware validates API tokens.
 func TokenAuthMiddleware(validTokens []string) func(http.Handler) http.Handler {
 	tokenSet := make(map[string]bool)
 	for _, t := range validTokens {
@@ -27,7 +27,7 @@ func TokenAuthMiddleware(validTokens []string) func(http.Handler) http.Handler {
 	}
 }
 
-// writeError 写入统一错误响应
+// writeError writes a unified error response.
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -36,7 +36,7 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	})
 }
 
-// writeJSON 写入 JSON 响应
+// writeJSON writes a JSON response.
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

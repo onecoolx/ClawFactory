@@ -1,4 +1,4 @@
-// Package registry 实现注册中心，管理智能体注册、发现和健康检查
+// Package registry implements the agent registry for registration, discovery, and health checks.
 package registry
 
 import (
@@ -7,7 +7,7 @@ import (
 	"github.com/clawfactory/clawfactory/internal/model"
 )
 
-// Registry 注册中心接口
+// Registry is the agent registry interface.
 type Registry interface {
 	Register(req model.RegisterRequest) (model.AgentInfo, error)
 	Heartbeat(agentID string) error

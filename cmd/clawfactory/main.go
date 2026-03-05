@@ -1,4 +1,4 @@
-// ClawFactory 平台主服务入口
+// ClawFactory platform main service entry point.
 package main
 
 import (
@@ -58,17 +58,17 @@ func loadConfig() Config {
 func main() {
 	cfg := loadConfig()
 
-	// 确保数据目录存在
+	// Ensure data directory exists
 	os.MkdirAll(cfg.DataDir, 0755)
 
-	// 初始化 SQLite StateStore
+	// Initialize SQLite StateStore
 	stateStore, err := store.NewSQLiteStore(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("初始化数据库失败: %v", err)
+		log.Fatalf("failed to initialize database: %v", err)
 	}
 	defer stateStore.Close()
 
-	// 初始化各组件
+	// Initialize components
 	queue := taskqueue.NewStoreBackedQueue(stateStore)
 	mem := memory.NewFileSystemMemory(cfg.DataDir, stateStore)
 	reg := registry.NewStoreRegistry(stateStore)
@@ -79,21 +79,21 @@ func main() {
 	}
 	pe, err := policy.NewConfigPolicyEngine(policyPath, stateStore)
 	if err != nil {
-		log.Fatalf("初始化策略引擎失败: %v", err)
+		log.Fatalf("failed to initialize policy engine: %v", err)
 	}
 
 	sched := scheduler.NewStoreScheduler(stateStore, queue)
 	wfEngine := workflow.NewStoreWorkflowEngine(stateStore, queue)
 
-	// 恢复未完成任务
+	// Restore unfinished tasks
 	unfinished, err := queue.RestoreUnfinished()
 	if err != nil {
-		log.Printf("恢复未完成任务失败: %v", err)
+		log.Printf("failed to restore unfinished tasks: %v", err)
 	} else if len(unfinished) > 0 {
-		log.Printf("恢复了 %d 个未完成任务", len(unfinished))
+		log.Printf("restored %d unfinished tasks", len(unfinished))
 	}
 
-	// 组装 HTTP 服务
+	// Assemble HTTP service
 	srv := &api.Server{
 		Store:     stateStore,
 		Registry:  reg,
@@ -106,23 +106,23 @@ func main() {
 
 	router := api.NewRouter(srv, cfg.APITokens)
 
-	// 启动后台心跳检查 goroutine
+	// Start background heartbeat check goroutine
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			marked, err := reg.CheckAndMarkOffline(90 * time.Second)
 			if err != nil {
-				log.Printf("心跳检查失败: %v", err)
+				log.Printf("heartbeat check failed: %v", err)
 			} else if len(marked) > 0 {
-				log.Printf("标记 %d 个智能体为 offline: %v", len(marked), marked)
+				log.Printf("marked %d agents as offline: %v", len(marked), marked)
 			}
 		}
 	}()
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("ClawFactory 平台启动，监听端口 %s", addr)
+	log.Printf("ClawFactory platform started, listening on %s", addr)
 	if err := http.ListenAndServe(addr, router); err != nil {
-		log.Fatalf("服务启动失败: %v", err)
+		log.Fatalf("failed to start server: %v", err)
 	}
 }

@@ -1,4 +1,4 @@
-"""编码智能体：基于设计方案，生成代码"""
+"""Coding agent: based on design proposals, generates code"""
 import asyncio
 import os
 from openai import AsyncOpenAI
@@ -17,7 +17,10 @@ class CodingAgent(BaseAgent):
 
     async def execute_task(self, task: dict) -> dict:
         input_data = task.get("input", {})
-        prompt = f"请根据以下技术设计方案，生成完整的代码实现：\n\n{input_data}"
+        prompt = (
+            "Based on the following technical design proposal, generate a complete code implementation:\n\n"
+            f"{input_data}"
+        )
 
         response = await self.llm.chat.completions.create(
             model="gpt-4o-mini",
