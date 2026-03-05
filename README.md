@@ -89,6 +89,7 @@ ClawFactory/
 - [Getting Started](docs/en/getting-started.md) — Step-by-step setup and first workflow
 - [User Guide](docs/en/user-guide.md) — CLI usage, configuration, agent development
 - [Examples](docs/en/examples.md) — Workflow examples and code samples
+- [Roadmap](docs/en/roadmap.md) — Gap analysis, technical roadmap and milestones
 
 ### 中文
 
@@ -97,6 +98,7 @@ ClawFactory/
 - [快速入门](docs/zh/getting-started.md) — 从零开始搭建环境并运行第一个工作流
 - [用户手册](docs/zh/user-guide.md) — CLI 使用、配置管理、智能体开发指南
 - [示例文档](docs/zh/examples.md) — 工作流示例与代码示例
+- [技术路线图](docs/zh/roadmap.md) — 差距分析、技术路线图与里程碑
 
 ## Configuration
 
