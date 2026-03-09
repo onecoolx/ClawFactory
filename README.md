@@ -2,9 +2,13 @@
 
 Copyright (c) 2026 Zhang Ji Peng (onecoolx@gmail.com)
 
-A multi-agent orchestration platform with control plane / data plane separation architecture. Built in Go. Agents communicate via the ARI (Agent Runtime Interface) REST protocol, making them language-agnostic.
+ClawFactory is a multi-agent orchestration and governance platform that enables secure and efficient collaboration of multiple agents under a unified security framework to enhance the safety and productivity of enterprise AI applications.
 
-多智能体编排平台，采用控制平面/数据平面分离架构。平台核心用 Go 开发,智能体通过 ARI（Agent Runtime Interface）REST 协议通信，语言无关。
+ClawFactory 是一个多智能体编排与治理平台，通过统一的安全框架实现多智能体高效协作，以提升企业级AI应用的安全性与生产力。
+
+
+![](https://github.com/onecoolx/ClawFactory/blob/main/docs/claw_factory_logo.png)
+
 
 ## Features
 
