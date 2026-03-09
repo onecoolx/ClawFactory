@@ -176,6 +176,105 @@ pending → assigned → running → completed
                 permanently_failed
 ```
 
+## Technical Evolution Direction
+
+> This section documents ClawFactory's long-term technical vision and evolution direction, based on comparative analysis with Kubernetes, OpenClaw, TrustClaw, and similar systems.
+
+### 1. Platform Positioning: Orchestration Platform vs Framework
+
+ClawFactory follows the **platform** approach (similar to how Kubernetes orchestrates containers), rather than the framework approach (like LangChain/CrewAI embedded in applications). Key differences:
+
+| Dimension | Platform (ClawFactory) | Framework (LangChain/CrewAI) |
+|-----------|----------------------|------------------------------|
+| Deployment model | Standalone service, agents connect via ARI protocol | Embedded in application process |
+| Language binding | Language-agnostic (HTTP REST) | Typically bound to a single language |
+| Scaling | Horizontal scaling of control plane + agents | In-application scaling |
+| Governance | Centralized policies, auditing, monitoring | Scattered across application code |
+| Use cases | Enterprise multi-team collaboration, production | Rapid prototyping, single-app orchestration |
+
+This positioning determines ClawFactory's evolution path: strengthening control plane capabilities, standardizing protocols, and providing multi-language SDKs, rather than pursuing framework-level developer convenience.
+
+### 2. Hierarchical Agent Architecture (Long-term Goal)
+
+Currently, ClawFactory agents are flat — all agents interact directly with the control plane. The future evolution targets a layered architecture:
+
+```
+┌─────────────────────────────────────────────┐
+│          Strategic Layer                      │
+│  Planning agents: understand goals,           │
+│  decompose into sub-task DAGs                 │
+│  (requires LLM, responsible for dynamic DAG)  │
+├─────────────────────────────────────────────┤
+│          Tactical Layer                       │
+│  Coordination agents: manage sub-task         │
+│  execution order and dependencies             │
+│  (intelligent upgrade of Workflow Engine)      │
+├─────────────────────────────────────────────┤
+│          Execution Layer                      │
+│  Worker agents: execute concrete tasks        │
+│  (coding/testing/analysis etc.)               │
+│  (corresponds to current 4 example agents)    │
+├─────────────────────────────────────────────┤
+│          Tool Layer                           │
+│  Tool invocations: filesystem, APIs,          │
+│  databases, search engines, etc.              │
+│  (governed by Policy Engine)                  │
+└─────────────────────────────────────────────┘
+```
+
+Implementation path:
+- v0.5: ARI protocol extension to support agent role labels (strategic/tactical/execution/tool)
+- v0.7+: Strategic agents can dynamically submit sub-workflows via API
+- v1.x: Complete hierarchical scheduling and permission isolation
+
+### 3. Dynamic DAG & LLM Planning
+
+Current workflows use static DAGs (user-predefined). The long-term goal is dynamic DAG support:
+
+- **Phase 1 (v0.5)**: Conditional branching — decide whether to execute downstream nodes based on upstream output
+- **Phase 2 (v0.7+)**: Runtime DAG modification — allow agents to append nodes to running workflows via API
+- **Phase 3 (v1.x+)**: LLM-driven planning — strategic agents receive high-level goals and auto-generate execution DAGs
+
+> Note: LLM-driven dynamic planning is a long-term goal. The current stage should focus on reliable static DAG execution and conditional branching, laying the foundation for dynamic capabilities. Premature introduction of LLM planning would increase system complexity, and there is insufficient execution data to validate planning quality.
+
+### 4. Security & Policy Engine Deepening
+
+The current Policy Engine uses static RBAC based on JSON configuration. Evolution direction:
+
+- **v0.4**: JWT authentication replacing static tokens, TLS encrypted transport
+- **v0.6+**: Introduce declarative policy language (referencing OPA/Rego or AWS Cedar) for fine-grained context-aware authorization
+- **v1.x**: Policy as Code with version management and audit trails
+- **Long-term**: Agent trust scoring — dynamically adjust permission boundaries based on historical behavior
+
+The policy engine's goal is to evolve from "static rule matching" to "context-aware dynamic decision-making" while maintaining policy auditability and explainability.
+
+### 5. Memory & Sharing Mechanism Evolution
+
+The current Shared Memory is a simple file system + SQLite metadata implementation. Evolution direction:
+
+| Phase | Capability | Implementation |
+|-------|-----------|---------------|
+| Current (v0.2) | File artifact storage, workflow isolation | Local filesystem + SQLite |
+| v0.6 | Object storage backend, large file support | S3/MinIO compatible interface |
+| v0.7+ | Structured context sharing, inter-agent messaging | Redis/NATS message layer |
+| v1.x | Long-term memory, cross-workflow knowledge accumulation | Vector database integration |
+
+Core principle: The memory layer is always abstracted through the StateStore interface, with swappable backends.
+
+### 6. Environment Adaptability
+
+ClawFactory's deployment targets extend beyond cloud-native environments:
+
+| Environment | Support Phase | Key Capabilities |
+|-------------|--------------|-----------------|
+| Development (single machine) | ✅ Current | SQLite, single process, zero-dependency startup |
+| On-premises | v0.6+ | PostgreSQL backend, Docker deployment |
+| Cloud-native | v0.8+ | K8s Helm Chart, horizontal scaling |
+| Hybrid cloud | v1.x | Multi-cluster federation, cross-region scheduling |
+| Edge computing | v2.0 | Lightweight control plane, offline mode |
+
+The choice of SQLite as the default storage is deliberate — it ensures a zero-dependency development experience while leaving room for production storage upgrades through the StateStore interface.
+
 ## Project Directory Structure
 
 ```

@@ -175,6 +175,10 @@ Goal: From prototype to a usable single-machine production version.
 - [ ] Cron expression support
 - [ ] Scheduled workflow triggers
 
+**ARI Protocol Extension (Paving the Way for Hierarchical Architecture)**
+- [ ] Agent role labels (strategic/tactical/execution/tool)
+- [ ] Role-aware scheduling strategies
+
 ---
 
 ## Mid-Term Roadmap (v0.6 — v1.0, 6-12 months)
@@ -187,6 +191,7 @@ Goal: From single-machine to distributed, production-ready deployment.
 - [ ] Implement PostgreSQL StateStore backend
 - [ ] Implement Redis cache layer (hot data acceleration)
 - [ ] Configurable storage backend switching
+- [ ] S3/MinIO compatible interface for artifact storage (large file scenarios)
 
 ### v0.7 — Distributed Architecture (2-3 months)
 
@@ -194,6 +199,7 @@ Goal: From single-machine to distributed, production-ready deployment.
 - [ ] Multi-instance deployment (distributed locks via database)
 - [ ] Distributed task queue (Redis or NATS based)
 - [ ] Agent registry as a service
+- [ ] Runtime DAG modification API (allow agents to append nodes to running workflows)
 
 ### v0.8 — Containerization & Cloud-Native (1-2 months)
 
@@ -224,13 +230,38 @@ Goal: From single-machine to distributed, production-ready deployment.
 
 Goal: Become a mature multi-agent orchestration platform.
 
-### v1.x — Ecosystem Building
+### v1.x — Ecosystem Building & Hierarchical Architecture
 
+**Ecosystem Infrastructure**
 - [ ] Web Dashboard (workflow visualization, agent monitoring, log viewer)
 - [ ] Plugin system (custom scheduling strategies, custom auth backends)
 - [ ] Marketplace (shared workflow templates and agents)
 - [ ] Multi-tenancy (namespace isolation)
 - [ ] API gateway integration
+
+**Hierarchical Agent Architecture**
+- [ ] ARI protocol extension: agent role labels (strategic/tactical/execution/tool)
+- [ ] Strategic layer agent support: dynamically submit sub-workflows via API
+- [ ] Hierarchical scheduling: differentiated scheduling strategies and permission isolation per layer
+- [ ] Inter-agent communication: tactical layer coordination agents manage execution layer task dependencies
+
+**Dynamic DAG Capabilities**
+- [ ] Runtime DAG modification: allow agents to append nodes to running workflows via API
+- [ ] DAG version snapshots: auto-save DAG state before modification, support rollback
+- [ ] LLM-driven planning (experimental): strategic agents receive high-level goals and auto-generate execution DAGs
+
+**Policy Engine Deepening**
+- [ ] Declarative policy language (referencing OPA/Rego or AWS Cedar)
+- [ ] Policy as Code: version management and audit trails
+- [ ] Agent trust scoring: dynamically adjust permission boundaries based on historical behavior
+
+**Memory Layer Evolution**
+- [ ] Long-term memory: cross-workflow knowledge accumulation
+- [ ] Vector database integration: semantic retrieval of historical artifacts and context
+
+**Environment Adaptability**
+- [ ] Multi-cluster federation: cross-region scheduling
+- [ ] Hybrid cloud deployment support
 
 ### v2.0 — Intelligent Orchestration
 
@@ -239,6 +270,26 @@ Goal: Become a mature multi-agent orchestration platform.
 - [ ] Workflow auto-optimization (identify bottleneck nodes, suggest parallelization)
 - [ ] A/B testing framework (compare different agents/models)
 - [ ] Cost tracking and optimization (LLM API call cost statistics)
+- [ ] Lightweight edge control plane (offline mode, edge computing scenarios)
+- [ ] Full LLM-driven dynamic planning (from experimental to production-ready)
+
+---
+
+## Technical Evolution Direction Summary
+
+ClawFactory's technical evolution follows these core principles:
+
+1. **Platform over Framework**: Runs as a standalone orchestration service, with agents connecting via standard protocol (ARI), rather than embedding in application processes. This prioritizes control plane capabilities and protocol standardization.
+
+2. **Incremental Complexity**: Static DAG → conditional branching → runtime modification → LLM-driven planning. Each step builds on the reliable foundation of the previous one. No leapfrogging complexity.
+
+3. **Interface Abstraction Enables Evolution**: The abstract design of core interfaces (StateStore, TaskQueue, SharedMemory) ensures storage backends, message layers, and memory mechanisms can evolve independently without affecting upper-layer logic.
+
+4. **Security Built-in, Not Bolted-on**: From v0.1's static Token + RBAC, to v0.4's JWT + TLS, to the long-term declarative policy language and trust scoring — security capabilities scale with platform maturity.
+
+5. **Environment Adaptability**: SQLite single-machine dev → PostgreSQL on-premises → K8s cloud-native → multi-cluster federation → edge computing. The same codebase adapts to different deployment scenarios.
+
+For detailed technical evolution direction, see the "Technical Evolution Direction" section in `docs/en/architecture.md`.
 
 ---
 
@@ -250,11 +301,11 @@ Goal: Become a mature multi-agent orchestration platform.
 | v0.2 ✅ | Core hardening: load balancing + auto-retry + offline requeue + assigned_to persistence + TaskQueue interface fix (5 tech debts, 8 new property tests P26-P33) | Done |
 | v0.3 | Observability: Prometheus + structured logging | 1 month |
 | v0.4 | Security hardening: JWT + TLS | 1 month |
-| v0.5 | Advanced workflows: conditional branching + templates | 1-2 months |
-| v0.6 | Storage abstraction: PostgreSQL + Redis (TaskQueue interface already fixed in v0.2) | 1-2 months |
-| v0.7 | Distributed architecture: multi-instance + distributed queue | 2-3 months |
+| v0.5 | Advanced workflows: conditional branching + templates + ARI role labels | 1-2 months |
+| v0.6 | Storage abstraction: PostgreSQL + Redis + S3/MinIO artifact storage | 1-2 months |
+| v0.7 | Distributed architecture: multi-instance + distributed queue + runtime DAG modification | 2-3 months |
 | v0.8 | Cloud-native: Docker + K8s + Helm | 1-2 months |
 | v0.9 | Multi-language SDKs | 1-2 months |
 | v1.0 | Production ready: E2E tests + benchmarks | 1-2 months |
-| v1.x | Ecosystem: Dashboard + plugins + multi-tenancy | Ongoing |
-| v2.0 | Intelligent orchestration: adaptive scheduling + auto-scaling | Long-term |
+| v1.x | Ecosystem + hierarchical architecture + dynamic DAG + policy deepening + memory evolution | Ongoing |
+| v2.0 | Intelligent orchestration: adaptive scheduling + auto-scaling + LLM-driven planning + edge computing | Long-term |
