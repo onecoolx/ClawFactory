@@ -1,5 +1,7 @@
 # ClawFactory
 
+Copyright (c) 2026 Zhang Ji Peng (onecoolx@gmail.com)
+
 A multi-agent orchestration platform with control plane / data plane separation architecture. Built in Go, it runs as a single-process HTTP service. Agents communicate via the ARI (Agent Runtime Interface) REST protocol, making them language-agnostic.
 
 多智能体编排平台，采用控制平面/数据平面分离架构。平台核心用 Go 开发，作为单进程 HTTP 服务运行。智能体通过 ARI（Agent Runtime Interface）REST 协议通信，语言无关。
