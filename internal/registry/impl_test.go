@@ -7,6 +7,7 @@ import (
 
 	"github.com/clawfactory/clawfactory/internal/model"
 	"github.com/clawfactory/clawfactory/internal/store"
+	"github.com/clawfactory/clawfactory/internal/taskqueue"
 	"pgregory.net/rapid"
 )
 
@@ -176,6 +177,151 @@ func TestProperty10_DeregisteredAgentNoTasks(t *testing.T) {
 		a, _ := reg.GetAgent(agent.AgentID)
 		if a.Status != "deregistered" {
 			rt.Fatalf("status should be deregistered, got %s", a.Status)
+		}
+	})
+}
+
+// Feature: v02-tech-debt-fixes, Property 32: offline agent task requeue
+// When an agent is marked offline, all its assigned/running tasks should be requeued
+// as "pending" with assigned_to cleared, preserving priority, capabilities, input, and retry_count.
+// **Validates: Requirements 4.1, 4.3, 4.4, 4.5**
+func TestProperty32_OfflineAgentTaskRequeue(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		reg, s := newTestRegistry(t)
+		queue := taskqueue.NewStoreBackedQueue(s)
+
+		// Register an agent
+		agentName := "offline-" + rapid.StringMatching("[a-z]{3,6}").Draw(rt, "agentName")
+		cap := rapid.StringMatching("[a-z]{3,8}").Draw(rt, "cap")
+		agent, err := reg.Register(model.RegisterRequest{
+			Name:         agentName,
+			Capabilities: []string{cap},
+			Version:      "1.0",
+		})
+		if err != nil {
+			rt.Fatal(err)
+		}
+
+		// Create a workflow instance (FK constraint)
+		wfID := "wf-" + rapid.StringMatching("[a-z0-9]{6}").Draw(rt, "wfID")
+		defID := "def-" + wfID
+		err = s.SaveWorkflow(
+			model.WorkflowInstance{InstanceID: wfID, DefinitionID: defID, Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now()},
+			model.WorkflowDefinition{ID: defID, Name: "test-wf", Nodes: []model.WorkflowNode{{ID: "n1", Type: "test", Capabilities: []string{cap}}}, Edges: nil},
+		)
+		if err != nil {
+			rt.Fatal(err)
+		}
+
+		// Generate 1-3 tasks assigned to this agent with status "assigned" or "running"
+		numTasks := rapid.IntRange(1, 3).Draw(rt, "numTasks")
+		type taskSnapshot struct {
+			TaskID       string
+			Priority     int
+			Capabilities []string
+			Input        map[string]string
+			RetryCount   int
+		}
+		originals := make([]taskSnapshot, numTasks)
+
+		for i := 0; i < numTasks; i++ {
+			taskID := rapid.StringMatching("[a-z0-9]{8}").Draw(rt, "taskID")
+			priority := rapid.IntRange(0, 10).Draw(rt, "priority")
+			retryCount := rapid.IntRange(0, 5).Draw(rt, "retryCount")
+			status := rapid.SampledFrom([]string{"assigned", "running"}).Draw(rt, "status")
+			inputKey := rapid.StringMatching("[a-z]{3,6}").Draw(rt, "inputKey")
+			inputVal := rapid.StringMatching("[a-z0-9]{3,10}").Draw(rt, "inputVal")
+			caps := []string{cap}
+
+			task := model.Task{
+				TaskID:       taskID,
+				WorkflowID:   wfID,
+				NodeID:       "n1",
+				Type:         "test",
+				Capabilities: caps,
+				Input:        map[string]string{inputKey: inputVal},
+				Status:       status,
+				Priority:     priority,
+				AssignedTo:   agent.AgentID,
+				RetryCount:   retryCount,
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+			}
+			if err := s.SaveTask(task); err != nil {
+				rt.Fatal(err)
+			}
+			// Persist assigned_to
+			if err := s.UpdateTaskAssignment(taskID, agent.AgentID); err != nil {
+				rt.Fatal(err)
+			}
+
+			originals[i] = taskSnapshot{
+				TaskID:       taskID,
+				Priority:     priority,
+				Capabilities: caps,
+				Input:        map[string]string{inputKey: inputVal},
+				RetryCount:   retryCount,
+			}
+		}
+
+		// Simulate agent going offline: set last_heartbeat to long ago
+		s.UpdateAgentStatus(agent.AgentID, "online", time.Now().Add(-10*time.Minute))
+
+		// Call CheckAndMarkOffline
+		offlineIDs, err := reg.CheckAndMarkOffline(90 * time.Second)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		found := false
+		for _, id := range offlineIDs {
+			if id == agent.AgentID {
+				found = true
+			}
+		}
+		if !found {
+			rt.Fatal("agent should be marked offline")
+		}
+
+		// Simulate heartbeat goroutine logic: requeue tasks for offline agents
+		tasks, err := s.GetTasksByAssignee(agent.AgentID)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		for _, tk := range tasks {
+			if err := queue.UpdateStatus(tk.TaskID, "pending", nil, ""); err != nil {
+				rt.Fatal(err)
+			}
+			if err := s.UpdateTaskAssignment(tk.TaskID, ""); err != nil {
+				rt.Fatal(err)
+			}
+		}
+
+		// Verify all tasks are now "pending" with empty assigned_to, metadata preserved
+		for _, orig := range originals {
+			got, err := s.GetTask(orig.TaskID)
+			if err != nil {
+				rt.Fatalf("failed to get task %s: %v", orig.TaskID, err)
+			}
+			if got.Status != "pending" {
+				rt.Fatalf("task %s: expected status 'pending', got '%s'", orig.TaskID, got.Status)
+			}
+			if got.AssignedTo != "" {
+				rt.Fatalf("task %s: expected empty assigned_to, got '%s'", orig.TaskID, got.AssignedTo)
+			}
+			if got.Priority != orig.Priority {
+				rt.Fatalf("task %s: priority changed from %d to %d", orig.TaskID, orig.Priority, got.Priority)
+			}
+			if len(got.Capabilities) != len(orig.Capabilities) || got.Capabilities[0] != orig.Capabilities[0] {
+				rt.Fatalf("task %s: capabilities changed", orig.TaskID)
+			}
+			for k, v := range orig.Input {
+				if got.Input[k] != v {
+					rt.Fatalf("task %s: input[%s] changed from '%s' to '%s'", orig.TaskID, k, v, got.Input[k])
+				}
+			}
+			if got.RetryCount != orig.RetryCount {
+				rt.Fatalf("task %s: retry_count changed from %d to %d", orig.TaskID, orig.RetryCount, got.RetryCount)
+			}
 		}
 	})
 }

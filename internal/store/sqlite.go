@@ -415,3 +415,149 @@ func (s *SQLiteStore) SaveAuditLog(entry model.AuditLogEntry) error {
 	)
 	return err
 }
+
+// --- Extended StateStore methods (v0.2) ---
+
+// matchCapabilities checks if at least one task capability matches one agent capability.
+func matchCapabilities(taskCaps, agentCaps []string) bool {
+	capSet := make(map[string]bool)
+	for _, c := range agentCaps {
+		capSet[c] = true
+	}
+	for _, c := range taskCaps {
+		if capSet[c] {
+			return true
+		}
+	}
+	return false
+}
+
+// ListPendingTasks returns pending tasks matching the given capabilities,
+// ordered by priority DESC, created_at ASC.
+// Capability matching is done in Go layer: at least one task capability matches one agent capability.
+func (s *SQLiteStore) ListPendingTasks(capabilities []string) ([]model.Task, error) {
+	rows, err := s.db.Query(
+		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
+		 FROM tasks WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list pending tasks: %w", err)
+	}
+	defer rows.Close()
+	var tasks []model.Task
+	for rows.Next() {
+		var t model.Task
+		var caps, input, output string
+		if err := rows.Scan(&t.TaskID, &t.WorkflowID, &t.NodeID, &t.Type, &caps, &input, &output,
+			&t.Status, &t.Priority, &t.AssignedTo, &t.RetryCount, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan pending task: %w", err)
+		}
+		json.Unmarshal([]byte(caps), &t.Capabilities)
+		json.Unmarshal([]byte(input), &t.Input)
+		json.Unmarshal([]byte(output), &t.Output)
+		// Filter by capability match in Go layer
+		if matchCapabilities(t.Capabilities, capabilities) {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks, rows.Err()
+}
+
+// ListUnfinishedTasks returns tasks with status pending, assigned, or running,
+// ordered by priority DESC.
+func (s *SQLiteStore) ListUnfinishedTasks() ([]model.Task, error) {
+	rows, err := s.db.Query(
+		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
+		 FROM tasks WHERE status IN ('pending', 'assigned', 'running') ORDER BY priority DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list unfinished tasks: %w", err)
+	}
+	defer rows.Close()
+	var tasks []model.Task
+	for rows.Next() {
+		var t model.Task
+		var caps, input, output string
+		if err := rows.Scan(&t.TaskID, &t.WorkflowID, &t.NodeID, &t.Type, &caps, &input, &output,
+			&t.Status, &t.Priority, &t.AssignedTo, &t.RetryCount, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan unfinished task: %w", err)
+		}
+		json.Unmarshal([]byte(caps), &t.Capabilities)
+		json.Unmarshal([]byte(input), &t.Input)
+		json.Unmarshal([]byte(output), &t.Output)
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// CountAgentActiveTasks returns the count of assigned/running tasks for the given agent.
+func (s *SQLiteStore) CountAgentActiveTasks(agentID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status IN ('assigned', 'running')`,
+		agentID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count agent active tasks: %w", err)
+	}
+	return count, nil
+}
+
+// IncrementTaskRetryCount atomically increments the retry_count of the specified task.
+func (s *SQLiteStore) IncrementTaskRetryCount(taskID string) error {
+	res, err := s.db.Exec(
+		`UPDATE tasks SET retry_count = retry_count + 1, updated_at = ? WHERE task_id = ?`,
+		time.Now(), taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("increment retry count: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+	return nil
+}
+
+// GetTasksByAssignee returns assigned/running tasks for the specified agent.
+func (s *SQLiteStore) GetTasksByAssignee(agentID string) ([]model.Task, error) {
+	rows, err := s.db.Query(
+		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
+		 FROM tasks WHERE assigned_to = ? AND status IN ('assigned', 'running')`,
+		agentID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get tasks by assignee: %w", err)
+	}
+	defer rows.Close()
+	var tasks []model.Task
+	for rows.Next() {
+		var t model.Task
+		var caps, input, output string
+		if err := rows.Scan(&t.TaskID, &t.WorkflowID, &t.NodeID, &t.Type, &caps, &input, &output,
+			&t.Status, &t.Priority, &t.AssignedTo, &t.RetryCount, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan assignee task: %w", err)
+		}
+		json.Unmarshal([]byte(caps), &t.Capabilities)
+		json.Unmarshal([]byte(input), &t.Input)
+		json.Unmarshal([]byte(output), &t.Output)
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+// UpdateTaskAssignment updates the assigned_to field of the specified task.
+func (s *SQLiteStore) UpdateTaskAssignment(taskID string, agentID string) error {
+	res, err := s.db.Exec(
+		`UPDATE tasks SET assigned_to = ?, updated_at = ? WHERE task_id = ?`,
+		agentID, time.Now(), taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update task assignment: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+	return nil
+}

@@ -1,8 +1,6 @@
 package taskqueue
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/clawfactory/clawfactory/internal/model"
@@ -28,60 +26,16 @@ func (q *StoreBackedQueue) Enqueue(task model.Task) error {
 	return q.store.SaveTask(task)
 }
 
-// Dequeue dequeues a task by priority and capability match.
-// Finds the highest-priority pending task that matches the given capabilities.
+// Dequeue queries pending tasks via StateStore interface, returns the first task with highest priority and matching capabilities.
 func (q *StoreBackedQueue) Dequeue(capabilities []string) (*model.Task, error) {
-	// Get all pending tasks (by querying the store backend).
-	// Since the StateStore interface doesn't provide a global pending query,
-	// we need to access the underlying implementation directly.
-	// For interface consistency, we use SQLite directly in StoreBackedQueue.
-	sqlStore, ok := q.store.(*store.SQLiteStore)
-	if !ok {
-		return nil, fmt.Errorf("store backend must be SQLiteStore for Dequeue")
-	}
-	return q.dequeueFromSQLite(sqlStore, capabilities)
-}
-
-func (q *StoreBackedQueue) dequeueFromSQLite(s *store.SQLiteStore, capabilities []string) (*model.Task, error) {
-	// Query all pending tasks, ordered by priority descending
-	rows, err := s.DB().Query(
-		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
-		 FROM tasks WHERE status = 'pending' ORDER BY priority DESC, created_at ASC`,
-	)
+	tasks, err := q.store.ListPendingTasks(capabilities)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var t model.Task
-		var caps, input, output string
-		if err := rows.Scan(&t.TaskID, &t.WorkflowID, &t.NodeID, &t.Type, &caps, &input, &output,
-			&t.Status, &t.Priority, &t.AssignedTo, &t.RetryCount, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
-		}
-		json.Unmarshal([]byte(caps), &t.Capabilities)
-		json.Unmarshal([]byte(input), &t.Input)
-		json.Unmarshal([]byte(output), &t.Output)
-
-		if matchCapabilities(t.Capabilities, capabilities) {
-			return &t, nil
-		}
+	if len(tasks) == 0 {
+		return nil, nil
 	}
-	return nil, nil // no matching task
-}
-
-func matchCapabilities(taskCaps, agentCaps []string) bool {
-	capSet := make(map[string]bool)
-	for _, c := range agentCaps {
-		capSet[c] = true
-	}
-	for _, c := range taskCaps {
-		if capSet[c] {
-			return true
-		}
-	}
-	return false
+	return &tasks[0], nil
 }
 
 func (q *StoreBackedQueue) UpdateStatus(taskID string, status string, output map[string]string, errMsg string) error {
@@ -100,31 +54,7 @@ func (q *StoreBackedQueue) GetTasksByWorkflow(workflowID string) ([]model.Task, 
 	return q.store.GetTasksByWorkflow(workflowID)
 }
 
+// RestoreUnfinished queries all unfinished tasks (pending/assigned/running) via StateStore interface.
 func (q *StoreBackedQueue) RestoreUnfinished() ([]model.Task, error) {
-	sqlStore, ok := q.store.(*store.SQLiteStore)
-	if !ok {
-		return nil, fmt.Errorf("store backend must be SQLiteStore for RestoreUnfinished")
-	}
-	rows, err := sqlStore.DB().Query(
-		`SELECT task_id, workflow_id, node_id, type, capabilities, input, output, status, priority, assigned_to, retry_count, error, created_at, updated_at
-		 FROM tasks WHERE status IN ('pending', 'assigned', 'running') ORDER BY priority DESC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var tasks []model.Task
-	for rows.Next() {
-		var t model.Task
-		var caps, input, output string
-		if err := rows.Scan(&t.TaskID, &t.WorkflowID, &t.NodeID, &t.Type, &caps, &input, &output,
-			&t.Status, &t.Priority, &t.AssignedTo, &t.RetryCount, &t.Error, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
-		}
-		json.Unmarshal([]byte(caps), &t.Capabilities)
-		json.Unmarshal([]byte(input), &t.Input)
-		json.Unmarshal([]byte(output), &t.Output)
-		tasks = append(tasks, t)
-	}
-	return tasks, rows.Err()
+	return q.store.ListUnfinishedTasks()
 }

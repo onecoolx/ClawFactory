@@ -193,6 +193,28 @@ GET /v1/tasks?agent_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 **成功响应（200）：**
 
+当 `status` 为 `running` 或 `completed` 时：
+
+```json
+{
+  "status": "ok"
+}
+```
+
+**失败重试行为（v0.2 新增）：**
+
+当 `status` 为 `failed` 时，平台会自动调用策略引擎（`PolicyEngine.ShouldRetry`）判断是否需要重试：
+
+- 如果 `retry_count < max_retries`（应重试）：任务状态改回 `pending` 重新入队，`retry_count` 递增 1，`assigned_to` 清空，返回：
+
+```json
+{
+  "status": "retrying"
+}
+```
+
+- 如果 `retry_count >= max_retries`（不应重试）：任务保持 `failed` 状态，触发 `WorkflowEngine.OnTaskPermanentlyFailed` 处理工作流级别的失败逻辑，返回：
+
 ```json
 {
   "status": "ok"
@@ -204,12 +226,14 @@ GET /v1/tasks?agent_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 pending → assigned → running → completed
                         ↓
-                     failed → pending (自动重试，未超过最大重试次数)
+                     failed ──→ pending (自动重试，retry_count < max_retries)
                         ↓
-                permanently_failed (超过最大重试次数)
+                permanently_failed (retry_count >= max_retries)
 ```
 
 当 `status` 为 `completed` 时，平台会自动触发工作流引擎检查下游任务依赖。
+
+重试入队后，任务的优先级、能力标签和输入数据保持不变，确保重试任务能被正确调度。最大重试次数通过 `configs/policy.json` 中的 `max_retries` 配置（默认 3 次）。
 
 ---
 
@@ -480,6 +504,85 @@ DAG 包含环或定义不合法时返回 `INVALID_WORKFLOW`。
   }
 ]
 ```
+
+---
+
+## StateStore 接口方法（v0.2 新增）
+
+以下是 v0.2 版本新增的 StateStore 接口方法，用于支持负载均衡、自动重试、离线任务重入队和任务分配持久化等功能。这些方法供平台内部组件（TaskQueue、Scheduler、API handler、心跳 goroutine）调用，不直接暴露为 HTTP 端点。
+
+### ListPendingTasks
+
+```go
+ListPendingTasks(capabilities []string) ([]model.Task, error)
+```
+
+返回匹配指定能力标签的待处理任务列表。
+
+- 仅返回 `status = "pending"` 的任务
+- 任务至少有一个能力标签与输入 `capabilities` 匹配
+- 结果按优先级降序排列，优先级相同时按创建时间升序排列
+- 用于替代 TaskQueue 中对 SQLiteStore 的类型断言，实现 `Dequeue` 操作
+
+### ListUnfinishedTasks
+
+```go
+ListUnfinishedTasks() ([]model.Task, error)
+```
+
+返回所有未完成的任务列表。
+
+- 返回 `status` 为 `pending`、`assigned` 或 `running` 的任务
+- 结果按优先级降序排列
+- 用于平台重启时恢复未完成任务（`RestoreUnfinished` 操作）
+
+### CountAgentActiveTasks
+
+```go
+CountAgentActiveTasks(agentID string) (int, error)
+```
+
+返回指定智能体当前活跃任务的数量。
+
+- 统计 `assigned_to` 匹配且 `status` 为 `assigned` 或 `running` 的任务数
+- 用于 Scheduler 的负载均衡决策：将任务分配给负载最低的智能体
+
+### IncrementTaskRetryCount
+
+```go
+IncrementTaskRetryCount(taskID string) error
+```
+
+原子递增指定任务的重试计数。
+
+- 执行 `retry_count = retry_count + 1` 的原子更新
+- 同时更新 `updated_at` 时间戳
+- 任务不存在时返回错误
+- 用于任务失败自动重试时记录重试次数
+
+### GetTasksByAssignee
+
+```go
+GetTasksByAssignee(agentID string) ([]model.Task, error)
+```
+
+返回分配给指定智能体的所有活跃任务。
+
+- 返回 `assigned_to` 匹配且 `status` 为 `assigned` 或 `running` 的任务
+- 用于智能体离线时查询其未完成任务并重新入队
+
+### UpdateTaskAssignment
+
+```go
+UpdateTaskAssignment(taskID string, agentID string) error
+```
+
+更新指定任务的分配信息。
+
+- 更新 `assigned_to` 字段和 `updated_at` 时间戳
+- 任务不存在时返回错误
+- `agentID` 为空字符串时表示清空分配（用于任务重入队场景）
+- 用于 Scheduler 分配任务后持久化分配信息，以及任务重入队时清空分配
 
 ---
 

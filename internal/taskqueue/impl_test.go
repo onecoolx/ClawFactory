@@ -79,8 +79,8 @@ func TestProperty17_TaskPriorityOrdering(t *testing.T) {
 		for i := 0; i < n; i++ {
 			prio := rapid.IntRange(0, 100).Draw(rt, "priority")
 			q.Enqueue(model.Task{
-				TaskID:       "tp-" + rapid.StringMatching("[a-z0-9]{5}").Draw(rt, "taskID"),
-				WorkflowID:   "wf-test", NodeID: "n1", Type: "test",
+				TaskID:     "tp-" + rapid.StringMatching("[a-z0-9]{5}").Draw(rt, "taskID"),
+				WorkflowID: "wf-test", NodeID: "n1", Type: "test",
 				Capabilities: []string{"cap1"}, Input: map[string]string{},
 				Output: map[string]string{}, Priority: prio,
 			})

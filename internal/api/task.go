@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/clawfactory/clawfactory/internal/model"
@@ -41,11 +42,48 @@ func (s *Server) updateTaskStatusHandler(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid JSON body")
 		return
 	}
+
+	// On task failure, check if auto-retry is needed
+	if req.Status == "failed" {
+		shouldRetry, err := s.Policy.ShouldRetry(taskID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("retry check failed: %v", err))
+			return
+		}
+		if shouldRetry {
+			// Increment retry count
+			if err := s.Store.IncrementTaskRetryCount(taskID); err != nil {
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("increment retry count failed: %v", err))
+				return
+			}
+			// Requeue as pending
+			if err := s.Queue.UpdateStatus(taskID, "pending", nil, ""); err != nil {
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("requeue failed: %v", err))
+				return
+			}
+			// Clear task assignment
+			if err := s.Store.UpdateTaskAssignment(taskID, ""); err != nil {
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("clear assignment failed: %v", err))
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"status": "retrying"})
+			return
+		}
+		// No retry, mark as permanently failed
+		if err := s.Queue.UpdateStatus(taskID, "failed", req.Output, req.Error); err != nil {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+			return
+		}
+		s.Workflow.OnTaskPermanentlyFailed(taskID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+
+	// Non-failed status, keep original logic
 	if err := s.Queue.UpdateStatus(taskID, req.Status, req.Output, req.Error); err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
-	// Trigger workflow engine callback
 	if req.Status == "completed" {
 		s.Workflow.OnTaskCompleted(taskID)
 	}

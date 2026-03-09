@@ -12,11 +12,11 @@ import (
 
 // Server holds all dependencies for the HTTP service.
 type Server struct {
-	Store    store.StateStore
-	Registry registry.Registry
+	Store     store.StateStore
+	Registry  registry.Registry
 	Scheduler scheduler.Scheduler
-	Policy   policy.PolicyEngine
-	Workflow workflow.WorkflowEngine
-	Queue    taskqueue.TaskQueue
-	Memory   memory.SharedMemory
+	Policy    policy.PolicyEngine
+	Workflow  workflow.WorkflowEngine
+	Queue     taskqueue.TaskQueue
+	Memory    memory.SharedMemory
 }

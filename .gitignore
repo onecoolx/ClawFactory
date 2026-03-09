@@ -3,6 +3,7 @@
 
 # Build output
 bin/
+/clawfactory
 
 # Data directory (SQLite DB, artifacts)
 data/

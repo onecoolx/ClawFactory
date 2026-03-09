@@ -293,6 +293,46 @@ data/artifacts/{workflow_id}/{task_id}/{artifact_name}
 
 Artifact metadata (path, creation time, etc.) is stored in SQLite.
 
+## v0.2 New Features
+
+### Load Balancing
+
+The platform uses a load-based task assignment strategy. When an agent polls for tasks via `GET /v1/tasks`, the scheduler checks the current load (number of assigned + running tasks) of all online agents with matching capabilities. A task is only assigned to the requesting agent if it has the lowest (or tied for lowest) active task count among candidates; otherwise, an empty result is returned, allowing a less-loaded agent to pick up the task.
+
+In practice:
+- Tasks are always assigned to the agent with the fewest active tasks
+- When multiple agents have the same load, the first to request gets the task
+- When only one matching agent exists, it receives the task regardless of load
+
+### Automatic Retry
+
+When an agent updates a task status to `failed`, the platform automatically checks the retry policy:
+
+1. If `retry_count < max_retries` (default max_retries=3), the task is automatically requeued:
+   - `retry_count` is incremented by 1
+   - Task status is reset to `pending`
+   - `assigned_to` is cleared, awaiting rescheduling
+   - Original priority, capabilities, and input data are preserved
+   - API returns `{"status": "retrying"}`
+
+2. If `retry_count >= max_retries`, the task is permanently failed:
+   - Task status remains `failed`
+   - Triggers `OnTaskPermanentlyFailed` in the workflow engine, potentially failing the entire workflow
+   - API returns `{"status": "ok"}`
+
+`max_retries` is configured in `configs/policy.json`.
+
+### Offline Agent Task Requeue
+
+The platform detects agent availability through heartbeats. When an agent fails to send a heartbeat for over 90 seconds (default: heartbeat_interval × timeout_multiplier = 30 × 3), it is marked as `offline`.
+
+At that point, all `assigned` and `running` tasks belonging to that agent are automatically requeued:
+- Task status is reset to `pending`
+- `assigned_to` field is cleared
+- Original priority, capabilities, input data, and `retry_count` are preserved
+
+This ensures that even if an agent crashes or loses network connectivity, its unfinished tasks are not lost and will be picked up by other available agents.
+
 ## Troubleshooting
 
 ### Platform Won't Start
@@ -312,6 +352,13 @@ Artifact metadata (path, creation time, etc.) is stored in SQLite.
 1. Confirm agent status is `online`: `claw agent list`
 2. Confirm agent `capabilities` overlap with task `capabilities`
 3. Confirm task status is `pending`
+4. Check load balancing: if a less-loaded matching agent exists, the current agent won't receive tasks
+
+### Tasks Retrying Repeatedly
+
+1. Check the agent's task execution logic for bugs
+2. View agent logs: `claw agent logs <agent_id>`
+3. Verify that `max_retries` in `configs/policy.json` is set appropriately
 
 ### Workflow Submission Fails
 

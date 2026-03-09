@@ -1,23 +1,23 @@
 # ClawFactory Technical Roadmap
 
-## Current Version Assessment (v0.1.0 — Prototype Validation)
+## Current Version Assessment (v0.2.0 — Core Hardening)
 
 ### Implemented Features
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| ARI Protocol Layer | ✅ Done | 14 HTTP endpoints, Token auth middleware |
-| Registry | ✅ Done | Idempotent registration, heartbeat, offline detection, deregistration |
-| Scheduler | ✅ Done | Capability matching, status filtering; lacks true load balancing |
+| ARI Protocol Layer | ✅ Done | 14 HTTP endpoints, Token auth middleware, task failure auto-retry |
+| Registry | ✅ Done | Idempotent registration, heartbeat, offline detection, deregistration, offline task auto-requeue |
+| Scheduler | ✅ Done | Capability matching, status filtering, least-active-tasks load balancing, assigned_to persistence |
 | Policy Engine | ✅ Done | RBAC permissions, tool whitelist, rate limiting, audit logs |
 | Workflow Engine | ✅ Done | DAG validation, root task scheduling, dependency checking, status derivation |
-| Task Queue | ✅ Done | Priority ordering, capability matching, unfinished task recovery |
+| Task Queue | ✅ Done | Priority ordering, capability matching, unfinished task recovery, removed SQLiteStore type assertion dependency |
 | Shared Memory | ✅ Done | Filesystem storage, workflow isolation, metadata persistence |
-| State Store (SQLite) | ✅ Done | 8 tables, WAL mode, foreign key constraints |
+| State Store (SQLite) | ✅ Done | 8 tables, WAL mode, foreign key constraints, 6 new interface methods (v0.2) |
 | CLI Tool | ✅ Done | workflow submit/status/artifacts, agent list/logs |
 | Python Example Agents | ✅ Done | 4 agents (requirement/design/coding/testing) |
-| Property Tests | ✅ Done | 25 property tests + unit tests, all passing |
-| Documentation | ✅ Done | Bilingual (Chinese + English): architecture, API, getting-started, guide, examples |
+| Property Tests | ✅ Done | 33 property tests (v0.1: P1-P25, v0.2: P26-P33) + unit tests, all passing |
+| Documentation | ✅ Done | Bilingual (Chinese + English): architecture, API, getting-started, guide, examples, roadmap |
 
 ### Gap Analysis vs Mature Orchestration Platforms (e.g., Kubernetes)
 
@@ -36,7 +36,7 @@
 | Capability | K8s | ClawFactory Current |
 |-----------|-----|-------------------|
 | Multi-dimensional scheduling | ✅ Resources, affinity, taints | ⚠️ Capability tags only |
-| Load balancing | ✅ Multiple strategies | ⚠️ Designed but not implemented |
+| Load balancing | ✅ Multiple strategies | ✅ Least-active-tasks load balancing (v0.2) |
 | Preemptive scheduling | ✅ Priority preemption | ❌ Not supported |
 | Resource quotas | ✅ ResourceQuota | ❌ Not supported |
 | Scheduling queues | ✅ Multiple queues | ⚠️ Single queue |
@@ -96,8 +96,10 @@ Goal: From prototype to a usable single-machine production version.
 
 ### v0.2 — Core Hardening (1-2 months)
 
+> **v0.2 tech debt fixes completed.** Added 8 new property tests (P26-P33), bringing the total to 33 property tests (with v0.1's P1-P25), all passing.
+
 **Scheduler Enhancements**
-- [ ] Implement true load balancing (least-connections based on current task count)
+- [x] Implement true load balancing (least-active-tasks strategy based on current task count) ✅
 - [ ] Support scheduling affinity (agent label matching)
 - [ ] Task timeout detection (auto-requeue assigned/running tasks on timeout)
 
@@ -107,7 +109,10 @@ Goal: From prototype to a usable single-machine production version.
 - [ ] Pass upstream artifacts to downstream tasks on retry
 
 **Reliability**
-- [ ] Auto-requeue assigned/running tasks when agent goes offline
+- [x] Auto-requeue assigned/running tasks when agent goes offline ✅
+- [x] Task failure auto-retry (wired PolicyEngine.ShouldRetry into API handler) ✅
+- [x] Remove TaskQueue type assertion dependency on SQLiteStore (originally planned for v0.6, completed early) ✅
+- [x] Persist task assigned_to field to database ✅
 - [ ] Comprehensive transaction usage for all database operations
 - [ ] Graceful shutdown
 
@@ -178,7 +183,7 @@ Goal: From single-machine to distributed, production-ready deployment.
 
 ### v0.6 — Storage Abstraction (1-2 months)
 
-- [ ] Abstract SQLite direct queries in TaskQueue.Dequeue to StateStore interface
+- [x] Abstract SQLite direct queries in TaskQueue.Dequeue to StateStore interface ✅ (completed early in v0.2)
 - [ ] Implement PostgreSQL StateStore backend
 - [ ] Implement Redis cache layer (hot data acceleration)
 - [ ] Configurable storage backend switching
@@ -241,12 +246,12 @@ Goal: Become a mature multi-agent orchestration platform.
 
 | Version | Goal | Estimated Time |
 |---------|------|---------------|
-| v0.1 ✅ | Prototype validation: core features + property tests | Done |
-| v0.2 | Core hardening: scheduler + reliability | 1-2 months |
+| v0.1 ✅ | Prototype validation: core features + 25 property tests | Done |
+| v0.2 ✅ | Core hardening: load balancing + auto-retry + offline requeue + assigned_to persistence + TaskQueue interface fix (5 tech debts, 8 new property tests P26-P33) | Done |
 | v0.3 | Observability: Prometheus + structured logging | 1 month |
 | v0.4 | Security hardening: JWT + TLS | 1 month |
 | v0.5 | Advanced workflows: conditional branching + templates | 1-2 months |
-| v0.6 | Storage abstraction: PostgreSQL + Redis | 1-2 months |
+| v0.6 | Storage abstraction: PostgreSQL + Redis (TaskQueue interface already fixed in v0.2) | 1-2 months |
 | v0.7 | Distributed architecture: multi-instance + distributed queue | 2-3 months |
 | v0.8 | Cloud-native: Docker + K8s + Helm | 1-2 months |
 | v0.9 | Multi-language SDKs | 1-2 months |

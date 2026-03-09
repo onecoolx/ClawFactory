@@ -348,6 +348,46 @@ data/artifacts/{workflow_id}/{task_id}/{artifact_name}
 
 产出物的元数据（路径、创建时间等）存储在 SQLite 中。
 
+## v0.2 新特性
+
+### 负载均衡
+
+平台采用基于负载的任务分配策略。当智能体通过 `GET /v1/tasks` 拉取任务时，调度器会检查所有在线且具备匹配能力标签的智能体的当前负载（assigned + running 状态的任务数）。只有当请求方智能体是负载最低的（或并列最低的）候选者时，才会分配任务；否则返回空结果，让负载更低的智能体来拉取。
+
+这意味着：
+- 任务总是优先分配给当前活跃任务数最少的智能体
+- 多个智能体负载相同时，先请求的智能体获得任务
+- 只有一个匹配智能体时，不受负载限制，直接分配
+
+### 自动重试
+
+当智能体将任务状态更新为 `failed` 时，平台会自动检查重试策略：
+
+1. 如果 `retry_count < max_retries`（默认 max_retries=3），任务自动重新入队：
+   - `retry_count` 递增 1
+   - 任务状态改回 `pending`
+   - 清空 `assigned_to`，等待重新调度
+   - 保留原始的优先级、能力标签和输入数据
+   - API 返回 `{"status": "retrying"}`
+
+2. 如果 `retry_count >= max_retries`，任务标记为永久失败：
+   - 任务状态保持 `failed`
+   - 触发工作流引擎的 `OnTaskPermanentlyFailed`，可能导致整个工作流失败
+   - API 返回 `{"status": "ok"}`
+
+`max_retries` 在 `configs/policy.json` 中配置。
+
+### 离线智能体任务重入队
+
+平台通过心跳机制检测智能体是否在线。当智能体超过 90 秒（默认 heartbeat_interval × timeout_multiplier = 30 × 3）未发送心跳时，会被标记为 `offline`。
+
+此时，该智能体名下所有 `assigned` 和 `running` 状态的任务会自动重新入队：
+- 任务状态改回 `pending`
+- 清空 `assigned_to` 字段
+- 保留原始的优先级、能力标签、输入数据和 `retry_count`
+
+这确保了即使智能体意外崩溃或断网，其未完成的任务也不会丢失，而是被其他可用智能体接管。
+
 ## 故障排查
 
 ### 平台无法启动
@@ -367,6 +407,13 @@ data/artifacts/{workflow_id}/{task_id}/{artifact_name}
 1. 确认智能体状态为 `online`：`claw agent list`
 2. 确认智能体的 `capabilities` 与任务的 `capabilities` 有交集
 3. 确认任务状态为 `pending`
+4. 检查负载均衡：如果存在负载更低的匹配智能体，当前智能体不会获得任务
+
+### 任务反复重试
+
+1. 检查智能体的任务执行逻辑是否存在 bug
+2. 查看智能体日志：`claw agent logs <agent_id>`
+3. 确认 `configs/policy.json` 中 `max_retries` 的值是否合理
 
 ### 工作流提交失败
 

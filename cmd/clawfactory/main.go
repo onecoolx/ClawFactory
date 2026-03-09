@@ -114,8 +114,30 @@ func main() {
 			marked, err := reg.CheckAndMarkOffline(90 * time.Second)
 			if err != nil {
 				log.Printf("heartbeat check failed: %v", err)
-			} else if len(marked) > 0 {
+				continue
+			}
+			if len(marked) > 0 {
 				log.Printf("marked %d agents as offline: %v", len(marked), marked)
+			}
+			// Requeue tasks for offline agents
+			for _, agentID := range marked {
+				tasks, err := stateStore.GetTasksByAssignee(agentID)
+				if err != nil {
+					log.Printf("failed to get tasks for offline agent %s: %v", agentID, err)
+					continue
+				}
+				for _, task := range tasks {
+					if err := queue.UpdateStatus(task.TaskID, "pending", nil, ""); err != nil {
+						log.Printf("failed to requeue task %s for offline agent %s: %v", task.TaskID, agentID, err)
+						continue
+					}
+					if err := stateStore.UpdateTaskAssignment(task.TaskID, ""); err != nil {
+						log.Printf("failed to clear assignment for task %s: %v", task.TaskID, err)
+					}
+				}
+				if len(tasks) > 0 {
+					log.Printf("requeued %d tasks from offline agent %s", len(tasks), agentID)
+				}
 			}
 		}
 	}()
