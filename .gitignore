@@ -5,6 +5,9 @@
 bin/
 /clawfactory
 
+# Python 3.9
+venv39/
+
 # Data directory (SQLite DB, artifacts)
 data/
 

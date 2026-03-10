@@ -13,7 +13,7 @@ class TestingAgent(BaseAgent):
             version="1.0.0",
             api_token=api_token,
         )
-        self.llm = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+        self.llm = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""), api_url=os.getenv("OPENAI_API_URL", ""))
 
     async def execute_task(self, task: dict) -> dict:
         input_data = task.get("input", {})
@@ -24,7 +24,7 @@ class TestingAgent(BaseAgent):
         )
 
         response = await self.llm.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv("MODULE_NAME", "gpt-4o-mini"),
             messages=[{"role": "user", "content": prompt}],
         )
         result = response.choices[0].message.content
