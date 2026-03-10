@@ -57,4 +57,13 @@ type StateStore interface {
 
 	// UpdateTaskAssignment updates the assigned_to field of the specified task.
 	UpdateTaskAssignment(taskID string, agentID string) error
+
+	// Event storage (v0.3)
+	SaveEvent(event model.Event) error
+	ListEvents(filter model.EventFilter) ([]model.Event, error)
+
+	// Webhook storage (v0.3)
+	SaveWebhook(webhook model.WebhookSubscription) error
+	ListWebhooks() ([]model.WebhookSubscription, error)
+	DeleteWebhook(webhookID string) error
 }

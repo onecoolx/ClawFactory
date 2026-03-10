@@ -7,6 +7,8 @@ ClawFactory exposes all functionality through the ARI (Agent Runtime Interface) 
 - Default service address: `http://localhost:8080`
 - All `/v1/*` endpoints require Bearer Token authentication
 - The health check endpoint `/health` requires no authentication
+- The Prometheus metrics endpoint `/metrics` requires no authentication (New in v0.3)
+- All responses include an `X-Trace-ID` header (New in v0.3)
 
 ## Authentication
 
@@ -432,6 +434,166 @@ Workflow status values: `running`, `completed`, `failed`
 
 ---
 
+### GET /v1/admin/events — List Events (New in v0.3)
+
+Query platform events with optional filtering by event type and entity ID.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| event_type | string | No | Filter by event type |
+| entity_id | string | No | Filter by entity ID |
+
+**Request Examples:**
+
+```
+GET /v1/admin/events?event_type=task.completed
+GET /v1/admin/events?entity_id=a1b2c3d4
+GET /v1/admin/events?event_type=agent.registered&entity_id=a1b2c3d4
+```
+
+**Success Response (200):**
+
+```json
+[
+  {
+    "event_id": "evt-001",
+    "event_type": "task.completed",
+    "entity_type": "task",
+    "entity_id": "task-001",
+    "detail": "{\"workflow_id\":\"wf-001\"}",
+    "created_at": "2026-03-10T10:30:00Z"
+  }
+]
+```
+
+**Supported Event Types:**
+
+| Event Type | Description |
+|-----------|-------------|
+| agent.registered | Agent registered |
+| agent.deregistered | Agent deregistered |
+| agent.offline | Agent went offline |
+| task.assigned | Task assigned to agent |
+| task.completed | Task completed |
+| task.failed | Task failed |
+| task.requeued | Task requeued |
+| workflow.submitted | Workflow submitted |
+| workflow.completed | Workflow completed |
+| workflow.failed | Workflow failed |
+
+---
+
+### POST /v1/admin/webhooks — Create Webhook Subscription (New in v0.3)
+
+Creates a webhook subscription. When a matching event occurs, the platform sends an HTTP POST callback to the subscription URL.
+
+**Request Body:**
+
+```json
+{
+  "url": "https://example.com/webhook",
+  "event_types": ["task.completed", "workflow.completed", "workflow.failed"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| url | string | Yes | Callback URL (must be a valid HTTP/HTTPS URL) |
+| event_types | string[] | Yes | List of event types to subscribe to |
+
+**Success Response (201):**
+
+```json
+{
+  "webhook_id": "wh-001",
+  "url": "https://example.com/webhook",
+  "event_types": ["task.completed", "workflow.completed", "workflow.failed"],
+  "created_at": "2026-03-10T10:00:00Z"
+}
+```
+
+**Webhook Callback Request Body Format:**
+
+When a matching event occurs, the platform sends an HTTP POST request to the subscription URL with the following body:
+
+```json
+{
+  "event_id": "evt-001",
+  "event_type": "task.completed",
+  "entity_type": "task",
+  "entity_id": "task-001",
+  "detail": "{\"workflow_id\":\"wf-001\"}",
+  "timestamp": "2026-03-10T10:30:00Z"
+}
+```
+
+**Notes:**
+
+- Webhook callbacks use a 5-second timeout to prevent slow external systems from affecting platform performance
+- Failed callbacks (non-2xx response or timeout) are logged but not retried, and do not block event processing
+- Webhook dispatch runs asynchronously in separate goroutines
+
+---
+
+### GET /v1/admin/webhooks — List Webhook Subscriptions (New in v0.3)
+
+**Success Response (200):**
+
+```json
+[
+  {
+    "webhook_id": "wh-001",
+    "url": "https://example.com/webhook",
+    "event_types": ["task.completed", "workflow.completed"],
+    "created_at": "2026-03-10T10:00:00Z"
+  }
+]
+```
+
+---
+
+### DELETE /v1/admin/webhooks/{webhookID} — Delete Webhook Subscription (New in v0.3)
+
+**Path Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| webhookID | Webhook subscription ID |
+
+**Success Response (200):**
+
+```json
+{
+  "status": "ok"
+}
+```
+
+---
+
+## Prometheus Metrics Endpoint (New in v0.3)
+
+### GET /metrics — Prometheus Metrics
+
+Exposes Prometheus-format monitoring metrics. This endpoint requires no Token authentication and is only available when `metrics_enabled=true` in the configuration.
+
+**Response Format:** Prometheus text exposition format
+
+**Custom Business Metrics:**
+
+| Metric Name | Type | Labels | Description |
+|------------|------|--------|-------------|
+| clawfactory_tasks_total | Counter | status | Task status change count (completed, failed, pending, assigned) |
+| clawfactory_scheduling_duration_seconds | Histogram | — | Task scheduling latency (time from creation to assignment) |
+| clawfactory_queue_depth | Gauge | — | Current pending task queue depth |
+| clawfactory_agents_online | Gauge | — | Current number of online agents |
+| clawfactory_workflow_duration_seconds | Histogram | — | Workflow execution time (from creation to completion/failure) |
+| clawfactory_http_requests_total | Counter | method, path, status_code | HTTP request count |
+| clawfactory_http_request_duration_seconds | Histogram | method, path | HTTP request latency |
+
+---
+
 ## StateStore Interface Methods (New in v0.2)
 
 The following StateStore interface methods were added in v0.2 to support load balancing, automatic retry, offline task requeue, and task assignment persistence. These methods are used internally by platform components (TaskQueue, Scheduler, API handler, heartbeat goroutine) and are not directly exposed as HTTP endpoints.
@@ -508,6 +670,73 @@ Updates the assignment information for a task.
 - Returns an error if the task does not exist
 - An empty `agentID` string clears the assignment (used when requeuing tasks)
 - Used by the Scheduler to persist assignment after task allocation, and to clear assignment during requeue
+
+---
+
+## StateStore Interface Methods (New in v0.3)
+
+The following StateStore interface methods were added in v0.3 to support the event system and webhook notifications.
+
+### SaveEvent
+
+```go
+SaveEvent(event model.Event) error
+```
+
+Persists a platform event to the events table.
+
+- Events contain event_id, event_type, entity_type, entity_id, detail (JSON), created_at
+- Used by EventBus for synchronous event persistence during publishing
+
+### ListEvents
+
+```go
+ListEvents(filter model.EventFilter) ([]model.Event, error)
+```
+
+Queries events with optional filtering by event_type and entity_id.
+
+- When `filter.EventType` is non-empty, only events matching that type are returned
+- When `filter.EntityID` is non-empty, only events matching that entity are returned
+- Both filters can be used simultaneously (AND logic)
+
+### SaveWebhook
+
+```go
+SaveWebhook(webhook model.WebhookSubscription) error
+```
+
+Saves a webhook subscription configuration.
+
+- event_types are serialized as a JSON string for storage
+
+### ListWebhooks
+
+```go
+ListWebhooks() ([]model.WebhookSubscription, error)
+```
+
+Lists all webhook subscriptions.
+
+- event_types are deserialized from JSON string to []string
+
+### DeleteWebhook
+
+```go
+DeleteWebhook(webhookID string) error
+```
+
+Deletes the specified webhook subscription.
+
+---
+
+## Response Headers (New in v0.3)
+
+All responses include an `X-Trace-ID` header with a unique UUID identifier, used to correlate logs produced by the same request across different components.
+
+```
+X-Trace-ID: 550e8400-e29b-41d4-a716-446655440000
+```
 
 ---
 

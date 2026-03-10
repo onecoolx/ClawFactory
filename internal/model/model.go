@@ -185,3 +185,43 @@ type ToolPolicy struct {
 	AllowedTools []string `json:"allowed_tools"`
 	RateLimit    int      `json:"rate_limit"`
 }
+
+// --- Event System Models (v0.3) ---
+
+// Event represents a platform event.
+type Event struct {
+	EventID    string    `json:"event_id"`
+	EventType  string    `json:"event_type"`
+	EntityType string    `json:"entity_type"` // "agent", "task", "workflow"
+	EntityID   string    `json:"entity_id"`
+	Detail     string    `json:"detail"` // JSON string
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// EventFilter defines query parameters for listing events.
+type EventFilter struct {
+	EventType string `json:"event_type,omitempty"`
+	EntityID  string `json:"entity_id,omitempty"`
+}
+
+// WebhookSubscription represents a webhook subscription.
+type WebhookSubscription struct {
+	WebhookID  string    `json:"webhook_id"`
+	URL        string    `json:"url"`
+	EventTypes []string  `json:"event_types"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Event type constants.
+const (
+	EventAgentRegistered   = "agent.registered"
+	EventAgentDeregistered = "agent.deregistered"
+	EventAgentOffline      = "agent.offline"
+	EventTaskAssigned      = "task.assigned"
+	EventTaskCompleted     = "task.completed"
+	EventTaskFailed        = "task.failed"
+	EventTaskRequeued      = "task.requeued"
+	EventWorkflowSubmitted = "workflow.submitted"
+	EventWorkflowCompleted = "workflow.completed"
+	EventWorkflowFailed    = "workflow.failed"
+)

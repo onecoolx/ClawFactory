@@ -2,15 +2,20 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/clawfactory/clawfactory/internal/api"
+	"github.com/clawfactory/clawfactory/internal/config"
+	"github.com/clawfactory/clawfactory/internal/event"
 	"github.com/clawfactory/clawfactory/internal/memory"
+	"github.com/clawfactory/clawfactory/internal/metrics"
+	"github.com/clawfactory/clawfactory/internal/model"
 	"github.com/clawfactory/clawfactory/internal/policy"
 	"github.com/clawfactory/clawfactory/internal/registry"
 	"github.com/clawfactory/clawfactory/internal/scheduler"
@@ -19,19 +24,32 @@ import (
 	"github.com/clawfactory/clawfactory/internal/workflow"
 )
 
+// generateHeartbeatUUID generates a UUID v4 string for use in the heartbeat goroutine.
+func generateHeartbeatUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// Config holds the platform configuration.
 type Config struct {
-	Port      int      `json:"port"`
-	DBPath    string   `json:"db_path"`
-	DataDir   string   `json:"data_dir"`
-	LogLevel  string   `json:"log_level"`
-	APITokens []string `json:"api_tokens"`
+	Port           int      `json:"port"`
+	DBPath         string   `json:"db_path"`
+	DataDir        string   `json:"data_dir"`
+	LogLevel       string   `json:"log_level"`
+	APITokens      []string `json:"api_tokens"`
+	MetricsEnabled bool     `json:"metrics_enabled"`
 }
 
 func loadConfig() Config {
 	cfg := Config{
 		Port: 8080, DBPath: "data/clawfactory.db",
 		DataDir: "data", LogLevel: "info",
-		APITokens: []string{"dev-token-001"},
+		MetricsEnabled: true,
+		APITokens:      []string{"dev-token-001"},
 	}
 
 	configPath := os.Getenv("CLAWFACTORY_CONFIG")
@@ -58,13 +76,27 @@ func loadConfig() Config {
 func main() {
 	cfg := loadConfig()
 
+	// Initialize slog with JSON handler based on configured log level
+	level := config.ParseSlogLevel(cfg.LogLevel)
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	// Log observability configuration at startup
+	slog.Info("observability config",
+		"component", "main",
+		"log_level", cfg.LogLevel,
+		"metrics_enabled", cfg.MetricsEnabled,
+	)
+
 	// Ensure data directory exists
 	os.MkdirAll(cfg.DataDir, 0755)
 
 	// Initialize SQLite StateStore
 	stateStore, err := store.NewSQLiteStore(cfg.DBPath)
 	if err != nil {
-		log.Fatalf("failed to initialize database: %v", err)
+		slog.Error("failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 	defer stateStore.Close()
 
@@ -79,7 +111,8 @@ func main() {
 	}
 	pe, err := policy.NewConfigPolicyEngine(policyPath, stateStore)
 	if err != nil {
-		log.Fatalf("failed to initialize policy engine: %v", err)
+		slog.Error("failed to initialize policy engine", "error", err)
+		os.Exit(1)
 	}
 
 	sched := scheduler.NewStoreScheduler(stateStore, queue)
@@ -88,10 +121,21 @@ func main() {
 	// Restore unfinished tasks
 	unfinished, err := queue.RestoreUnfinished()
 	if err != nil {
-		log.Printf("failed to restore unfinished tasks: %v", err)
+		slog.Warn("failed to restore unfinished tasks", "component", "main", "error", err)
 	} else if len(unfinished) > 0 {
-		log.Printf("restored %d unfinished tasks", len(unfinished))
+		slog.Info("restored unfinished tasks", "component", "main", "count", len(unfinished))
 	}
+
+	// Create MetricsCollector based on configuration
+	var mc metrics.MetricsCollector
+	if cfg.MetricsEnabled {
+		mc = metrics.NewPrometheusCollector()
+	} else {
+		mc = metrics.NewNoopCollector()
+	}
+
+	// Create EventBus
+	eventBus := event.NewStoreEventBus(stateStore)
 
 	// Assemble HTTP service
 	srv := &api.Server{
@@ -102,9 +146,11 @@ func main() {
 		Workflow:  wfEngine,
 		Queue:     queue,
 		Memory:    mem,
+		Metrics:   mc,
+		Events:    eventBus,
 	}
 
-	router := api.NewRouter(srv, cfg.APITokens)
+	router := api.NewRouter(srv, cfg.APITokens, mc, cfg.MetricsEnabled)
 
 	// Start background heartbeat check goroutine
 	go func() {
@@ -113,38 +159,98 @@ func main() {
 		for range ticker.C {
 			marked, err := reg.CheckAndMarkOffline(90 * time.Second)
 			if err != nil {
-				log.Printf("heartbeat check failed: %v", err)
+				slog.Error("heartbeat check failed", "component", "heartbeat", "error", err)
 				continue
 			}
 			if len(marked) > 0 {
-				log.Printf("marked %d agents as offline: %v", len(marked), marked)
+				slog.Info("marked agents as offline", "component", "heartbeat", "count", len(marked), "agent_ids", marked)
 			}
-			// Requeue tasks for offline agents
+
+			// Publish agent offline events and requeue tasks for offline agents
 			for _, agentID := range marked {
+				// Publish agent offline event
+				if srv.Events != nil {
+					detail, _ := json.Marshal(map[string]string{})
+					if err := srv.Events.Publish(model.Event{
+						EventID:    generateHeartbeatUUID(),
+						EventType:  model.EventAgentOffline,
+						EntityType: "agent",
+						EntityID:   agentID,
+						Detail:     string(detail),
+						CreatedAt:  time.Now().UTC(),
+					}); err != nil {
+						slog.Warn("failed to publish event", "component", "heartbeat", "event_type", model.EventAgentOffline, "error", err)
+					}
+				}
+
 				tasks, err := stateStore.GetTasksByAssignee(agentID)
 				if err != nil {
-					log.Printf("failed to get tasks for offline agent %s: %v", agentID, err)
+					slog.Error("failed to get tasks for offline agent", "component", "heartbeat", "agent_id", agentID, "error", err)
 					continue
 				}
 				for _, task := range tasks {
 					if err := queue.UpdateStatus(task.TaskID, "pending", nil, ""); err != nil {
-						log.Printf("failed to requeue task %s for offline agent %s: %v", task.TaskID, agentID, err)
+						slog.Error("failed to requeue task for offline agent", "component", "heartbeat", "task_id", task.TaskID, "agent_id", agentID, "error", err)
 						continue
 					}
 					if err := stateStore.UpdateTaskAssignment(task.TaskID, ""); err != nil {
-						log.Printf("failed to clear assignment for task %s: %v", task.TaskID, err)
+						slog.Error("failed to clear assignment for task", "component", "heartbeat", "task_id", task.TaskID, "error", err)
+					}
+
+					// Publish task requeued event
+					if srv.Events != nil {
+						detail, _ := json.Marshal(map[string]string{"reason": "agent_offline", "agent_id": agentID})
+						if err := srv.Events.Publish(model.Event{
+							EventID:    generateHeartbeatUUID(),
+							EventType:  model.EventTaskRequeued,
+							EntityType: "task",
+							EntityID:   task.TaskID,
+							Detail:     string(detail),
+							CreatedAt:  time.Now().UTC(),
+						}); err != nil {
+							slog.Warn("failed to publish event", "component", "heartbeat", "event_type", model.EventTaskRequeued, "error", err)
+						}
 					}
 				}
 				if len(tasks) > 0 {
-					log.Printf("requeued %d tasks from offline agent %s", len(tasks), agentID)
+					slog.Info("requeued tasks from offline agent", "component", "heartbeat", "count", len(tasks), "agent_id", agentID)
+				}
+			}
+
+			// Update online agents gauge
+			if srv.Metrics != nil {
+				agents, err := reg.ListAgents()
+				if err == nil {
+					onlineCount := 0
+					for _, a := range agents {
+						if a.Status == "online" {
+							onlineCount++
+						}
+					}
+					srv.Metrics.SetAgentsOnline(float64(onlineCount))
+				}
+			}
+
+			// Update queue depth gauge
+			if srv.Metrics != nil {
+				unfinished, err := stateStore.ListUnfinishedTasks()
+				if err == nil {
+					pendingCount := 0
+					for _, t := range unfinished {
+						if t.Status == "pending" {
+							pendingCount++
+						}
+					}
+					srv.Metrics.SetQueueDepth(float64(pendingCount))
 				}
 			}
 		}
 	}()
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("ClawFactory platform started, listening on %s", addr)
+	slog.Info("ClawFactory platform started", "component", "main", "address", addr)
 	if err := http.ListenAndServe(addr, router); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+		slog.Error("failed to start server", "error", err)
+		os.Exit(1)
 	}
 }

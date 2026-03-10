@@ -285,6 +285,7 @@ ClawFactory/
 │       └── main.go
 ├── internal/
 │   ├── api/                # ARI 协议层
+│   ├── config/             # 配置工具函数
 │   ├── registry/           # 注册中心
 │   ├── scheduler/          # 调度器
 │   ├── policy/             # 策略引擎
@@ -293,6 +294,9 @@ ClawFactory/
 │   ├── memory/             # 共享记忆层
 │   ├── store/              # 状态存储
 │   └── model/              # 数据模型
+├── tests/                  # 测试文件（镜像源代码层级）
+│   ├── internal/           # internal 包的测试
+│   └── cmd/                # cmd 包的测试
 ├── agents/                 # Python 示例智能体
 ├── configs/                # 配置文件
 ├── docs/                   # 文档

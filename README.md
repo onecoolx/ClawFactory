@@ -73,6 +73,7 @@ ClawFactory/
 ├── cmd/claw/            # CLI tool entry
 ├── internal/
 │   ├── api/             # HTTP handlers & middleware
+│   ├── config/          # Configuration utilities
 │   ├── model/           # Data models
 │   ├── store/           # SQLite state store
 │   ├── registry/        # Agent registry
@@ -80,7 +81,12 @@ ClawFactory/
 │   ├── policy/          # Policy engine
 │   ├── workflow/        # Workflow engine
 │   ├── taskqueue/       # Task queue
-│   └── memory/          # Shared memory
+│   ├── memory/          # Shared memory
+│   ├── metrics/         # Prometheus metrics
+│   └── event/           # Event bus & webhooks
+├── tests/               # All test files (mirrors source layout)
+│   ├── internal/        # Tests for internal packages
+│   └── cmd/             # Tests for cmd packages
 ├── agents/              # Python example agents
 ├── configs/             # Configuration files
 └── docs/                # Documentation
@@ -124,6 +130,10 @@ Environment variables:
 
 ## Testing
 
+Test files are organized in a dedicated `tests/` directory that mirrors the source code layout (e.g., `internal/store/` → `tests/internal/store/`). Tests use the external test package pattern (`package xxx_test`) and access unexported symbols through `export_test.go` bridge files where needed.
+
+测试文件统一存放在 `tests/` 目录中，目录结构镜像源代码层级（如 `internal/store/` → `tests/internal/store/`）。测试使用外部测试包模式（`package xxx_test`），需要访问未导出符号时通过 `export_test.go` 桥接文件暴露。
+
 ```bash
 # Run all tests (unit + property-based)
 go test ./...
@@ -132,7 +142,7 @@ go test ./...
 go test -v ./...
 ```
 
-The project includes 25 property-based tests using [rapid](https://github.com/flyingmutant/rapid) covering registration idempotency, capability matching, DAG validation, workflow state transitions, and more.
+The project includes 42 property-based tests using [rapid](https://github.com/flyingmutant/rapid) covering registration idempotency, capability matching, DAG validation, workflow state transitions, metrics, events, webhooks, and more.
 
 ## Requirements
 

@@ -1,22 +1,26 @@
 # ClawFactory Technical Roadmap
 
-## Current Version Assessment (v0.2.0 — Core Hardening)
+## Current Version Assessment (v0.3.0 — Observability)
 
 ### Implemented Features
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| ARI Protocol Layer | ✅ Done | 14 HTTP endpoints, Token auth middleware, task failure auto-retry |
+| ARI Protocol Layer | ✅ Done | 19 HTTP endpoints (including 5 new in v0.3), Token auth middleware, task failure auto-retry |
 | Registry | ✅ Done | Idempotent registration, heartbeat, offline detection, deregistration, offline task auto-requeue |
 | Scheduler | ✅ Done | Capability matching, status filtering, least-active-tasks load balancing, assigned_to persistence |
 | Policy Engine | ✅ Done | RBAC permissions, tool whitelist, rate limiting, audit logs |
 | Workflow Engine | ✅ Done | DAG validation, root task scheduling, dependency checking, status derivation |
 | Task Queue | ✅ Done | Priority ordering, capability matching, unfinished task recovery, removed SQLiteStore type assertion dependency |
 | Shared Memory | ✅ Done | Filesystem storage, workflow isolation, metadata persistence |
-| State Store (SQLite) | ✅ Done | 8 tables, WAL mode, foreign key constraints, 6 new interface methods (v0.2) |
+| State Store (SQLite) | ✅ Done | 10 tables, WAL mode, foreign key constraints, 6 new methods (v0.2), 5 new methods (v0.3: events + webhooks) |
+| Prometheus Metrics | ✅ Done | `/metrics` endpoint, 7 custom business metrics (New in v0.3) |
+| Structured Logging | ✅ Done | slog JSON format, log level control, request-level TraceID (New in v0.3) |
+| Event System | ✅ Done | 10 event types, SQLite persistence, query API (New in v0.3) |
+| Webhook Notifications | ✅ Done | CRUD API, async dispatch, 5s timeout (New in v0.3) |
 | CLI Tool | ✅ Done | workflow submit/status/artifacts, agent list/logs |
 | Python Example Agents | ✅ Done | 4 agents (requirement/design/coding/testing) |
-| Property Tests | ✅ Done | 33 property tests (v0.1: P1-P25, v0.2: P26-P33) + unit tests, all passing |
+| Property Tests | ✅ Done | 42 property tests (v0.1: P1-P25, v0.2: P26-P33, v0.3: P34-P42) + unit tests, all passing |
 | Documentation | ✅ Done | Bilingual (Chinese + English): architecture, API, getting-started, guide, examples, roadmap |
 
 ### Gap Analysis vs Mature Orchestration Platforms (e.g., Kubernetes)
@@ -55,14 +59,14 @@
 | Sub-workflows | ✅ | ❌ Not supported |
 | Cron scheduling | ✅ | ❌ Not supported |
 
-#### 4. Observability (Gap: Large)
+#### 4. Observability (Gap: Medium)
 
 | Capability | K8s | ClawFactory Current |
 |-----------|-----|-------------------|
-| Structured logging | ✅ | ⚠️ Basic log storage |
-| Metrics monitoring | ✅ Prometheus | ❌ Not supported |
-| Distributed tracing | ✅ OpenTelemetry | ❌ Not supported |
-| Event system | ✅ Events | ❌ Not supported |
+| Structured logging | ✅ | ✅ slog JSON format + log level control (v0.3) |
+| Metrics monitoring | ✅ Prometheus | ✅ Prometheus `/metrics` endpoint + 7 custom metrics (v0.3) |
+| Distributed tracing | ✅ OpenTelemetry | ⚠️ Request-level TraceID (v0.3, not full OpenTelemetry) |
+| Event system | ✅ Events | ✅ 10 event types + query API + Webhook notifications (v0.3) |
 | Dashboard | ✅ Grafana | ❌ Not supported |
 | Alerting | ✅ AlertManager | ❌ Not supported |
 
@@ -82,7 +86,7 @@
 | Capability | K8s | ClawFactory Current |
 |-----------|-----|-------------------|
 | Plugin mechanism | ✅ CRD + Operator | ❌ Not supported |
-| Webhooks | ✅ Admission Webhook | ❌ Not supported |
+| Webhooks | ✅ Admission Webhook | ✅ Event Webhook notifications (v0.3) |
 | API versioning | ✅ Multi-version coexistence | ⚠️ v1 only |
 | SDKs | ✅ Multi-language client-go | ⚠️ Python base class only |
 | Package management | ✅ Helm | ❌ Not supported |
@@ -124,20 +128,22 @@ Goal: From prototype to a usable single-machine production version.
 
 ### v0.3 — Observability (1 month)
 
+> **v0.3 observability completed.** Added 9 new property tests (P34-P42), bringing the total to 42 property tests (with v0.1's P1-P25 and v0.2's P26-P33), all passing.
+
 **Monitoring Metrics**
-- [ ] Prometheus metrics integration (`/metrics` endpoint)
-- [ ] Key metrics: task throughput, scheduling latency, queue depth, online agent count
-- [ ] Workflow execution time statistics
+- [x] Prometheus metrics integration (`/metrics` endpoint) ✅
+- [x] Key metrics: task throughput, scheduling latency, queue depth, online agent count ✅
+- [x] Workflow execution time statistics ✅
 
 **Structured Logging**
-- [ ] Replace `log` with `slog`
-- [ ] Log level control (debug/info/warn/error)
-- [ ] Request-level trace ID
+- [x] Replace `log` with `slog` ✅
+- [x] Log level control (debug/info/warn/error) ✅
+- [x] Request-level trace ID ✅
 
 **Event System**
-- [ ] Define event types (AgentRegistered, TaskAssigned, WorkflowCompleted, etc.)
-- [ ] Event storage and query API
-- [ ] Webhook notifications (callback on workflow completion/failure)
+- [x] Define event types (AgentRegistered, TaskAssigned, WorkflowCompleted, etc.) ✅
+- [x] Event storage and query API ✅
+- [x] Webhook notifications (callback on workflow completion/failure) ✅
 
 ### v0.4 — Security Hardening (1 month)
 
@@ -299,7 +305,7 @@ For detailed technical evolution direction, see the "Technical Evolution Directi
 |---------|------|---------------|
 | v0.1 ✅ | Prototype validation: core features + 25 property tests | Done |
 | v0.2 ✅ | Core hardening: load balancing + auto-retry + offline requeue + assigned_to persistence + TaskQueue interface fix (5 tech debts, 8 new property tests P26-P33) | Done |
-| v0.3 | Observability: Prometheus + structured logging | 1 month |
+| v0.3 ✅ | Observability: Prometheus metrics + slog structured logging + TraceID + event system + Webhook notifications (9 new property tests P34-P42) | Done |
 | v0.4 | Security hardening: JWT + TLS | 1 month |
 | v0.5 | Advanced workflows: conditional branching + templates + ARI role labels | 1-2 months |
 | v0.6 | Storage abstraction: PostgreSQL + Redis + S3/MinIO artifact storage | 1-2 months |

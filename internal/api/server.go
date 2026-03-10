@@ -1,7 +1,9 @@
 package api
 
 import (
+	"github.com/clawfactory/clawfactory/internal/event"
 	"github.com/clawfactory/clawfactory/internal/memory"
+	"github.com/clawfactory/clawfactory/internal/metrics"
 	"github.com/clawfactory/clawfactory/internal/policy"
 	"github.com/clawfactory/clawfactory/internal/registry"
 	"github.com/clawfactory/clawfactory/internal/scheduler"
@@ -19,4 +21,6 @@ type Server struct {
 	Workflow  workflow.WorkflowEngine
 	Queue     taskqueue.TaskQueue
 	Memory    memory.SharedMemory
+	Metrics   metrics.MetricsCollector // v0.3: platform metrics
+	Events    event.EventBus           // v0.3: event bus
 }

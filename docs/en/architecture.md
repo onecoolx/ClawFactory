@@ -286,6 +286,7 @@ ClawFactory/
 │       └── main.go
 ├── internal/
 │   ├── api/                # ARI protocol layer
+│   ├── config/             # Configuration utilities
 │   ├── registry/           # Registry
 │   ├── scheduler/          # Scheduler
 │   ├── policy/             # Policy engine
@@ -294,6 +295,9 @@ ClawFactory/
 │   ├── memory/             # Shared memory
 │   ├── store/              # State store
 │   └── model/              # Data models
+├── tests/                  # Test files (mirrors source code hierarchy)
+│   ├── internal/           # Tests for internal packages
+│   └── cmd/                # Tests for cmd packages
 ├── agents/                 # Python example agents
 ├── configs/                # Configuration files
 ├── docs/                   # Documentation

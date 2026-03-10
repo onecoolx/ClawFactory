@@ -1,22 +1,26 @@
 # ClawFactory 技术路线图
 
-## 当前版本状态评估（v0.2.0 — 核心加固）
+## 当前版本状态评估（v0.3.0 — 可观测性）
 
 ### 已实现功能
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| ARI 协议层 | ✅ 完成 | 14 个 HTTP 端点，Token 认证中间件，任务失败自动重试 |
+| ARI 协议层 | ✅ 完成 | 19 个 HTTP 端点（含 v0.3 新增 5 个），Token 认证中间件，任务失败自动重试 |
 | Registry 注册中心 | ✅ 完成 | 注册幂等性、心跳管理、离线检测、注销、离线任务自动重入队 |
 | Scheduler 调度器 | ✅ 完成 | 能力匹配、状态过滤、基于最少活跃任务数的负载均衡、assigned_to 持久化 |
 | Policy Engine 策略引擎 | ✅ 完成 | RBAC 权限、工具白名单、速率限制、审计日志 |
 | Workflow Engine 工作流引擎 | ✅ 完成 | DAG 验证、起始任务调度、下游依赖检查、状态推导 |
 | Task Queue 任务队列 | ✅ 完成 | 优先级排序、能力匹配、未完成任务恢复、已消除对 SQLiteStore 的类型断言依赖 |
 | Shared Memory 共享记忆层 | ✅ 完成 | 文件系统存储、工作流隔离、元数据持久化 |
-| State Store (SQLite) | ✅ 完成 | 8 张表、WAL 模式、外键约束、新增 6 个接口方法（v0.2） |
+| State Store (SQLite) | ✅ 完成 | 10 张表、WAL 模式、外键约束、v0.2 新增 6 个方法、v0.3 新增 5 个方法（events + webhooks） |
+| Prometheus 监控指标 | ✅ 完成 | `/metrics` 端点、7 个自定义业务指标（v0.3 新增） |
+| 结构化日志 | ✅ 完成 | slog JSON 格式、日志级别控制、请求级 TraceID（v0.3 新增） |
+| 事件系统 | ✅ 完成 | 10 种事件类型、SQLite 持久化、查询 API（v0.3 新增） |
+| Webhook 通知 | ✅ 完成 | CRUD API、异步分发、5 秒超时（v0.3 新增） |
 | CLI 工具 | ✅ 完成 | workflow submit/status/artifacts、agent list/logs |
 | Python 示例智能体 | ✅ 完成 | 4 个智能体（需求/设计/编码/测试） |
-| 属性测试 | ✅ 完成 | 33 个属性测试（v0.1: P1-P25, v0.2: P26-P33）+ 单元测试，全部通过 |
+| 属性测试 | ✅ 完成 | 42 个属性测试（v0.1: P1-P25, v0.2: P26-P33, v0.3: P34-P42）+ 单元测试，全部通过 |
 | 文档 | ✅ 完成 | 中英文双语：架构、API、入门、手册、示例、路线图 |
 
 ### 与成熟编排平台（如 Kubernetes）的差距分析
@@ -57,14 +61,14 @@
 | 子工作流 | ✅ | ❌ 不支持 |
 | Cron 调度 | ✅ | ❌ 不支持 |
 
-#### 4. 可观测性（差距：大）
+#### 4. 可观测性（差距：中等）
 
 | 能力 | K8s | ClawFactory 现状 |
 |------|-----|-----------------|
-| 结构化日志 | ✅ | ⚠️ 基础日志存储 |
-| 指标监控 | ✅ Prometheus | ❌ 不支持 |
-| 分布式追踪 | ✅ OpenTelemetry | ❌ 不支持 |
-| 事件系统 | ✅ Event | ❌ 不支持 |
+| 结构化日志 | ✅ | ✅ slog JSON 格式 + 日志级别控制（v0.3） |
+| 指标监控 | ✅ Prometheus | ✅ Prometheus `/metrics` 端点 + 7 个自定义指标（v0.3） |
+| 分布式追踪 | ✅ OpenTelemetry | ⚠️ 请求级 TraceID（v0.3，非完整 OpenTelemetry） |
+| 事件系统 | ✅ Event | ✅ 10 种事件类型 + 查询 API + Webhook 通知（v0.3） |
 | Dashboard | ✅ Grafana | ❌ 不支持 |
 | 告警 | ✅ AlertManager | ❌ 不支持 |
 
@@ -84,7 +88,7 @@
 | 能力 | K8s | ClawFactory 现状 |
 |------|-----|-----------------|
 | 插件机制 | ✅ CRD + Operator | ❌ 不支持 |
-| Webhook | ✅ Admission Webhook | ❌ 不支持 |
+| Webhook | ✅ Admission Webhook | ✅ 事件 Webhook 通知（v0.3） |
 | API 版本管理 | ✅ 多版本共存 | ⚠️ 仅 v1 |
 | SDK | ✅ 多语言 client-go | ⚠️ 仅 Python 基类 |
 | 包管理 | ✅ Helm | ❌ 不支持 |
@@ -126,20 +130,22 @@
 
 ### v0.3 — 可观测性（1 个月）
 
+> **v0.3 可观测性已完成。** 新增 9 个属性测试（P34-P42），连同 v0.1 的 P1-P25 和 v0.2 的 P26-P33，共 42 个属性测试全部通过。
+
 **监控指标**
-- [ ] 集成 Prometheus metrics（`/metrics` 端点）
-- [ ] 关键指标：任务吞吐量、调度延迟、队列深度、智能体在线数
-- [ ] 工作流执行时间统计
+- [x] 集成 Prometheus metrics（`/metrics` 端点） ✅
+- [x] 关键指标：任务吞吐量、调度延迟、队列深度、智能体在线数 ✅
+- [x] 工作流执行时间统计 ✅
 
 **结构化日志**
-- [ ] 使用 `slog` 替换 `log` 标准库
-- [ ] 日志级别控制（debug/info/warn/error）
-- [ ] 请求级别 trace ID
+- [x] 使用 `slog` 替换 `log` 标准库 ✅
+- [x] 日志级别控制（debug/info/warn/error） ✅
+- [x] 请求级别 trace ID ✅
 
 **事件系统**
-- [ ] 定义事件类型（AgentRegistered, TaskAssigned, WorkflowCompleted 等）
-- [ ] 事件存储和查询 API
-- [ ] Webhook 通知（工作流完成/失败时回调外部 URL）
+- [x] 定义事件类型（AgentRegistered, TaskAssigned, WorkflowCompleted 等） ✅
+- [x] 事件存储和查询 API ✅
+- [x] Webhook 通知（工作流完成/失败时回调外部 URL） ✅
 
 ### v0.4 — 安全加固（1 个月）
 
@@ -301,7 +307,7 @@ ClawFactory 的技术演进遵循以下核心原则：
 |------|------|----------|
 | v0.1 ✅ | 原型验证：核心功能 + 25 个属性测试 | 已完成 |
 | v0.2 ✅ | 核心加固：负载均衡 + 自动重试 + 离线重入队 + assigned_to 持久化 + TaskQueue 接口修复（5 个技术债务，8 个新属性测试 P26-P33） | 已完成 |
-| v0.3 | 可观测性：Prometheus + 结构化日志 | 1 个月 |
+| v0.3 ✅ | 可观测性：Prometheus 指标 + slog 结构化日志 + TraceID + 事件系统 + Webhook 通知（9 个新属性测试 P34-P42） | 已完成 |
 | v0.4 | 安全加固：JWT + TLS | 1 个月 |
 | v0.5 | 工作流高级功能：条件分支 + 模板 + ARI 角色标签 | 1-2 个月 |
 | v0.6 | 存储层抽象：PostgreSQL + Redis + S3/MinIO 产出物存储 | 1-2 个月 |

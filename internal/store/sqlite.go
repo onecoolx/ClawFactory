@@ -120,6 +120,22 @@ func (s *SQLiteStore) initTables() error {
 			call_count INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (agent_id, tool_name, window_start)
 		)`,
+		`CREATE TABLE IF NOT EXISTS events (
+			event_id    TEXT PRIMARY KEY,
+			event_type  TEXT NOT NULL,
+			entity_type TEXT NOT NULL,
+			entity_id   TEXT NOT NULL,
+			detail      TEXT NOT NULL DEFAULT '{}',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)`,
+		`CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_id)`,
+		`CREATE TABLE IF NOT EXISTS webhooks (
+			webhook_id  TEXT PRIMARY KEY,
+			url         TEXT NOT NULL,
+			event_types TEXT NOT NULL DEFAULT '[]',
+			created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)`,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -560,4 +576,87 @@ func (s *SQLiteStore) UpdateTaskAssignment(taskID string, agentID string) error 
 		return fmt.Errorf("task %s not found", taskID)
 	}
 	return nil
+}
+
+// --- Event Storage (v0.3) ---
+
+// SaveEvent inserts an event into the events table.
+func (s *SQLiteStore) SaveEvent(event model.Event) error {
+	_, err := s.db.Exec(
+		`INSERT INTO events (event_id, event_type, entity_type, entity_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		event.EventID, event.EventType, event.EntityType, event.EntityID, event.Detail, event.CreatedAt,
+	)
+	return err
+}
+
+// ListEvents returns events matching the given filter, ordered by created_at ASC.
+func (s *SQLiteStore) ListEvents(filter model.EventFilter) ([]model.Event, error) {
+	query := `SELECT event_id, event_type, entity_type, entity_id, detail, created_at FROM events WHERE 1=1`
+	var args []interface{}
+	if filter.EventType != "" {
+		query += ` AND event_type = ?`
+		args = append(args, filter.EventType)
+	}
+	if filter.EntityID != "" {
+		query += ` AND entity_id = ?`
+		args = append(args, filter.EntityID)
+	}
+	query += ` ORDER BY created_at ASC`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer rows.Close()
+	var events []model.Event
+	for rows.Next() {
+		var e model.Event
+		if err := rows.Scan(&e.EventID, &e.EventType, &e.EntityType, &e.EntityID, &e.Detail, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// --- Webhook Storage (v0.3) ---
+
+// SaveWebhook inserts a webhook subscription into the webhooks table.
+func (s *SQLiteStore) SaveWebhook(webhook model.WebhookSubscription) error {
+	eventTypesJSON, err := json.Marshal(webhook.EventTypes)
+	if err != nil {
+		return fmt.Errorf("marshal event_types: %w", err)
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO webhooks (webhook_id, url, event_types, created_at) VALUES (?, ?, ?, ?)`,
+		webhook.WebhookID, webhook.URL, string(eventTypesJSON), webhook.CreatedAt,
+	)
+	return err
+}
+
+// ListWebhooks returns all webhook subscriptions.
+func (s *SQLiteStore) ListWebhooks() ([]model.WebhookSubscription, error) {
+	rows, err := s.db.Query(`SELECT webhook_id, url, event_types, created_at FROM webhooks`)
+	if err != nil {
+		return nil, fmt.Errorf("list webhooks: %w", err)
+	}
+	defer rows.Close()
+	var webhooks []model.WebhookSubscription
+	for rows.Next() {
+		var w model.WebhookSubscription
+		var eventTypesStr string
+		if err := rows.Scan(&w.WebhookID, &w.URL, &eventTypesStr, &w.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan webhook: %w", err)
+		}
+		if err := json.Unmarshal([]byte(eventTypesStr), &w.EventTypes); err != nil {
+			return nil, fmt.Errorf("unmarshal event_types: %w", err)
+		}
+		webhooks = append(webhooks, w)
+	}
+	return webhooks, rows.Err()
+}
+
+// DeleteWebhook removes a webhook subscription by ID.
+func (s *SQLiteStore) DeleteWebhook(webhookID string) error {
+	_, err := s.db.Exec(`DELETE FROM webhooks WHERE webhook_id = ?`, webhookID)
+	return err
 }
