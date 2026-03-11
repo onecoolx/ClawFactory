@@ -19,6 +19,34 @@ var (
 	outputJSON bool
 )
 
+// ANSI color codes for terminal output.
+const (
+	colorReset  = "\033[0m"
+	colorGreen  = "\033[32m"
+	colorRed    = "\033[31m"
+	colorYellow = "\033[33m"
+)
+
+// statusColors maps status strings to ANSI color codes.
+var statusColors = map[string]string{
+	"online":       colorGreen,
+	"completed":    colorGreen,
+	"offline":      colorRed,
+	"failed":       colorRed,
+	"deregistered": colorYellow,
+	"running":      colorYellow,
+	"assigned":     colorYellow,
+	"pending":      colorYellow,
+}
+
+// colorize wraps a status string with the corresponding ANSI color code.
+func colorize(status string) string {
+	if color, ok := statusColors[status]; ok {
+		return color + status + colorReset
+	}
+	return status
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "claw",
@@ -31,11 +59,11 @@ func main() {
 
 	// workflow command group
 	workflowCmd := &cobra.Command{Use: "workflow", Short: "Workflow management"}
-	workflowCmd.AddCommand(workflowSubmitCmd(), workflowStatusCmd(), workflowArtifactsCmd())
+	workflowCmd.AddCommand(workflowSubmitCmd(), workflowStatusCmd(), workflowArtifactsCmd(), workflowListCmd())
 
 	// agent command group
 	agentCmd := &cobra.Command{Use: "agent", Short: "Agent management"}
-	agentCmd.AddCommand(agentListCmd(), agentLogsCmd())
+	agentCmd.AddCommand(agentListCmd(), agentLogsCmd(), agentDeregisterCmd())
 
 	rootCmd.AddCommand(workflowCmd, agentCmd)
 
@@ -113,7 +141,7 @@ func workflowStatusCmd() *cobra.Command {
 				json.Unmarshal(resp, &result)
 				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 				fmt.Fprintf(w, "ID\t%v\n", result["instance_id"])
-				fmt.Fprintf(w, "Status\t%v\n", result["status"])
+				fmt.Fprintf(w, "Status\t%v\n", colorize(fmt.Sprintf("%v", result["status"])))
 				w.Flush()
 			}
 			return nil
@@ -166,7 +194,7 @@ func agentListCmd() *cobra.Command {
 				fmt.Fprintf(w, "ID\tNAME\tSTATUS\tVERSION\tCAPABILITIES\n")
 				for _, a := range agents {
 					fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\n",
-						a["agent_id"], a["name"], a["status"], a["version"], a["capabilities"])
+						a["agent_id"], a["name"], colorize(fmt.Sprintf("%v", a["status"])), a["version"], a["capabilities"])
 				}
 				w.Flush()
 			}
@@ -198,6 +226,62 @@ func agentLogsCmd() *cobra.Command {
 				}
 				w.Flush()
 			}
+			return nil
+		},
+	}
+}
+
+func workflowListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all workflow instances",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := doRequest("GET", "/v1/admin/workflows", nil)
+			if err != nil {
+				return err
+			}
+			if outputJSON {
+				fmt.Println(string(resp))
+			} else {
+				var workflows []map[string]interface{}
+				json.Unmarshal(resp, &workflows)
+				w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+				fmt.Fprintf(w, "ID\tSTATUS\tDEFINITION\tCREATED\n")
+				for _, wf := range workflows {
+					fmt.Fprintf(w, "%v\t%v\t%v\t%v\n",
+						wf["instance_id"], colorize(fmt.Sprintf("%v", wf["status"])), wf["definition_id"], wf["created_at"])
+				}
+				w.Flush()
+			}
+			return nil
+		},
+	}
+}
+
+func agentDeregisterCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "deregister [agent_id]",
+		Short: "Deregister an agent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := doRequest("DELETE", "/v1/admin/agents/"+args[0], nil)
+			if err != nil {
+				return err
+			}
+			var result map[string]interface{}
+			if err := json.Unmarshal(resp, &result); err == nil {
+				if errMsg, ok := result["message"]; ok {
+					if code, ok := result["code"]; ok {
+						if fmt.Sprintf("%v", code) == "agent_not_found" {
+							fmt.Fprintf(os.Stderr, "Error: agent not found: %s\n", args[0])
+							os.Exit(1)
+						}
+						fmt.Fprintf(os.Stderr, "Error: %v\n", errMsg)
+						os.Exit(1)
+					}
+				}
+			}
+			fmt.Printf("Agent %s deregistered successfully\n", args[0])
 			return nil
 		},
 	}

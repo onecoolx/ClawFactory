@@ -9,6 +9,7 @@ import (
 	"github.com/clawfactory/clawfactory/internal/model"
 	"github.com/go-chi/chi/v5"
 )
+
 func (s *Server) listAgentsHandler(w http.ResponseWriter, r *http.Request) {
 	traceID := TraceIDFromContext(r.Context())
 	logger := slog.With("trace_id", traceID, "component", "api")
@@ -50,6 +51,22 @@ func (s *Server) deregisterAgentHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) listWorkflowsHandler(w http.ResponseWriter, r *http.Request) {
+	traceID := TraceIDFromContext(r.Context())
+	logger := slog.With("trace_id", traceID, "component", "api")
+
+	instances, err := s.Store.ListWorkflowInstances()
+	if err != nil {
+		logger.Error("list workflows: failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list workflow instances")
+		return
+	}
+	if instances == nil {
+		instances = []model.WorkflowInstance{}
+	}
+	writeJSON(w, http.StatusOK, instances)
 }
 
 func (s *Server) submitWorkflowHandler(w http.ResponseWriter, r *http.Request) {

@@ -106,27 +106,27 @@
 
 **调度器增强**
 - [x] 实现真正的负载均衡（基于当前活跃任务数的最少连接策略） ✅
-- [ ] 支持调度亲和性（agent 标签匹配）
-- [ ] 任务超时检测（assigned/running 超时自动重新入队）
+- ~~支持调度亲和性（agent 标签匹配）~~ → 移至 v0.5
+- ~~任务超时检测（assigned/running 超时自动重新入队）~~ → 移至 v0.5
 
 **工作流增强**
-- [ ] 任务超时配置（节点级别 timeout 字段）
-- [ ] 工作流取消功能（cancel API + 级联取消未完成任务）
-- [ ] 任务重试时传递上游产出物到下游
+- ~~任务超时配置（节点级别 timeout 字段）~~ → 移至 v0.5
+- ~~工作流取消功能（cancel API + 级联取消未完成任务）~~ → 移至 v0.5
+- ~~任务重试时传递上游产出物到下游~~ → 移至 v0.5
 
 **可靠性**
 - [x] 智能体离线时自动重新入队其 assigned/running 任务 ✅
 - [x] 任务失败自动重试（API handler 接入 PolicyEngine.ShouldRetry） ✅
 - [x] 消除 TaskQueue 对 SQLiteStore 的类型断言依赖（原计划 v0.6，提前完成） ✅
 - [x] 持久化任务的 assigned_to 字段 ✅
-- [ ] 数据库操作全面使用事务
-- [ ] 优雅关闭（graceful shutdown）
+- [ ] 数据库操作全面使用事务 → 移至 v0.3.1 独立完成
+- [ ] 优雅关闭（graceful shutdown） → 移至 v0.3.1 独立完成
 
 **CLI 增强**
-- [ ] `claw workflow cancel <workflow_id>` 取消工作流
-- [ ] `claw workflow list` 列出所有工作流
-- [ ] `claw agent deregister <agent_id>` 注销智能体
-- [ ] 输出着色和进度显示
+- ~~`claw workflow cancel <workflow_id>` 取消工作流~~ → 移至 v0.5（依赖 cancel API）
+- [ ] `claw workflow list` 列出所有工作流 → 移至 v0.3.1 独立完成
+- [ ] `claw agent deregister <agent_id>` 注销智能体 → 移至 v0.3.1 独立完成
+- [ ] 输出着色和进度显示 → 移至 v0.3.1 独立完成
 
 ### v0.3 — 可观测性（1 个月）
 
@@ -163,7 +163,17 @@
 - [ ] 敏感配置加密存储
 - [ ] 环境变量注入智能体
 
-### v0.5 — 工作流高级功能（1-2 个月）
+### v0.5 — 调度增强 + 工作流高级功能（1-2 个月）
+
+**调度器增强（从 v0.2 移入）**
+- [ ] 支持调度亲和性（agent 标签匹配）
+- [ ] 任务超时检测（assigned/running 超时自动重新入队）
+
+**工作流增强（从 v0.2 移入）**
+- [ ] 任务超时配置（节点级别 timeout 字段）
+- [ ] 工作流取消功能（cancel API + 级联取消未完成任务）
+- [ ] `claw workflow cancel <workflow_id>` CLI 命令（依赖 cancel API）
+- [ ] 任务重试时传递上游产出物到下游
 
 **条件分支**
 - [ ] 节点条件表达式（基于上游输出判断是否执行）
@@ -308,8 +318,9 @@ ClawFactory 的技术演进遵循以下核心原则：
 | v0.1 ✅ | 原型验证：核心功能 + 25 个属性测试 | 已完成 |
 | v0.2 ✅ | 核心加固：负载均衡 + 自动重试 + 离线重入队 + assigned_to 持久化 + TaskQueue 接口修复（5 个技术债务，8 个新属性测试 P26-P33） | 已完成 |
 | v0.3 ✅ | 可观测性：Prometheus 指标 + slog 结构化日志 + TraceID + 事件系统 + Webhook 通知（9 个新属性测试 P34-P42） | 已完成 |
+| v0.3.1 | 可靠性 + CLI 增强：事务化 + 优雅关闭 + workflow list + agent deregister + 输出着色 | 1-2 周 |
 | v0.4 | 安全加固：JWT + TLS | 1 个月 |
-| v0.5 | 工作流高级功能：条件分支 + 模板 + ARI 角色标签 | 1-2 个月 |
+| v0.5 | 调度增强 + 工作流高级功能：亲和性 + 超时 + 取消 + 条件分支 + 模板 + ARI 角色标签 | 1-2 个月 |
 | v0.6 | 存储层抽象：PostgreSQL + Redis + S3/MinIO 产出物存储 | 1-2 个月 |
 | v0.7 | 分布式架构：多实例 + 分布式队列 + 运行时 DAG 修改 | 2-3 个月 |
 | v0.8 | 云原生：Docker + K8s + Helm | 1-2 个月 |

@@ -1,6 +1,8 @@
 package store_test
 
 import (
+	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -656,4 +658,271 @@ func TestProperty42_WebhookCRUDRoundTrip(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Feature: v031-reliability-cli, Property 43: RunInTransaction atomicity
+// Validates: Requirements 1.1, 1.2, 1.3, 1.5
+func TestProperty43_RunInTransactionAtomicity(t *testing.T) {
+	s := newTestStore(t)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		// Create workflow instance (foreign key constraint)
+		wfID := "wf-p43-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "wfID")
+		inst := model.WorkflowInstance{
+			InstanceID: wfID, DefinitionID: "def-1", Status: "running",
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		def := model.WorkflowDefinition{ID: "def-1", Name: "test"}
+		if err := s.SaveWorkflow(inst, def); err != nil {
+			rt.Fatal(err)
+		}
+
+		// Generate a random task with status "assigned"
+		taskID := "task-p43-" + rapid.StringMatching("[a-z0-9]{6}").Draw(rt, "taskID")
+		originalStatus := "assigned"
+		originalAssignedTo := "agent-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "agentID")
+		task := model.Task{
+			TaskID: taskID, WorkflowID: wfID, NodeID: "n1", Type: "test",
+			Capabilities: []string{"cap1"}, Input: map[string]string{}, Output: map[string]string{},
+			Status: originalStatus, Priority: rapid.IntRange(0, 10).Draw(rt, "priority"),
+			AssignedTo: originalAssignedTo, RetryCount: 0,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}
+		if err := s.SaveTask(task); err != nil {
+			rt.Fatal(err)
+		}
+
+		// --- Test rollback: transaction returns error, changes should NOT persist ---
+		rollbackErr := fmt.Errorf("deliberate-rollback-%s", rapid.StringMatching("[a-z]{3}").Draw(rt, "errSuffix"))
+		err := s.RunInTransaction(func(tx *sql.Tx) error {
+			_, execErr := tx.Exec(
+				`UPDATE tasks SET status = 'pending', assigned_to = '' WHERE task_id = ?`,
+				taskID,
+			)
+			if execErr != nil {
+				rt.Fatal(execErr)
+			}
+			return rollbackErr
+		})
+		if err != rollbackErr {
+			rt.Fatalf("RunInTransaction should return the fn error, got %v, want %v", err, rollbackErr)
+		}
+
+		// Verify task status is unchanged after rollback
+		got, err := s.GetTask(taskID)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		if got.Status != originalStatus {
+			rt.Fatalf("after rollback: status got %q, want %q", got.Status, originalStatus)
+		}
+		if got.AssignedTo != originalAssignedTo {
+			rt.Fatalf("after rollback: assigned_to got %q, want %q", got.AssignedTo, originalAssignedTo)
+		}
+
+		// --- Test commit: transaction returns nil, changes should persist ---
+		newStatus := "pending"
+		err = s.RunInTransaction(func(tx *sql.Tx) error {
+			_, execErr := tx.Exec(
+				`UPDATE tasks SET status = ?, assigned_to = '', retry_count = retry_count + 1 WHERE task_id = ?`,
+				newStatus, taskID,
+			)
+			return execErr
+		})
+		if err != nil {
+			rt.Fatalf("RunInTransaction commit should succeed, got %v", err)
+		}
+
+		// Verify task status has changed after commit
+		got2, err := s.GetTask(taskID)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		if got2.Status != newStatus {
+			rt.Fatalf("after commit: status got %q, want %q", got2.Status, newStatus)
+		}
+		if got2.AssignedTo != "" {
+			rt.Fatalf("after commit: assigned_to got %q, want empty", got2.AssignedTo)
+		}
+		if got2.RetryCount != 1 {
+			rt.Fatalf("after commit: retry_count got %d, want 1", got2.RetryCount)
+		}
+	})
+}
+
+// Feature: v031-reliability-cli, Property 44: ListWorkflowInstances completeness and ordering
+// Validates: Requirements 3.1
+func TestProperty44_ListWorkflowInstancesCompletenessAndOrdering(t *testing.T) {
+	s := newTestStore(t)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		n := rapid.IntRange(2, 10).Draw(rt, "instanceCount")
+		baseTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+		// Generate and insert workflow instances with distinct created_at timestamps
+		insertedIDs := make(map[string]bool, n)
+		for i := 0; i < n; i++ {
+			instID := "wf-p44-" + rapid.StringMatching("[a-z0-9]{8}").Draw(rt, "instID")
+			defID := "def-p44-" + rapid.StringMatching("[a-z0-9]{4}").Draw(rt, "defID")
+			status := rapid.SampledFrom([]string{"running", "completed", "failed"}).Draw(rt, "status")
+
+			// Each instance gets a distinct created_at offset by i seconds
+			createdAt := baseTime.Add(time.Duration(i) * time.Second)
+
+			inst := model.WorkflowInstance{
+				InstanceID:   instID,
+				DefinitionID: defID,
+				Status:       status,
+				CreatedAt:    createdAt,
+				UpdatedAt:    createdAt,
+			}
+			def := model.WorkflowDefinition{ID: defID, Name: "test-p44"}
+			if err := s.SaveWorkflow(inst, def); err != nil {
+				rt.Fatal(err)
+			}
+			insertedIDs[instID] = true
+		}
+
+		// Call ListWorkflowInstances
+		result, err := s.ListWorkflowInstances()
+		if err != nil {
+			rt.Fatal(err)
+		}
+
+		// Verify completeness: all inserted IDs appear in the result
+		resultIDs := make(map[string]bool, len(result))
+		for _, wi := range result {
+			resultIDs[wi.InstanceID] = true
+		}
+		for id := range insertedIDs {
+			if !resultIDs[id] {
+				rt.Fatalf("inserted instance %s not found in ListWorkflowInstances result", id)
+			}
+		}
+
+		// Verify ordering: created_at should be non-increasing (DESC)
+		for i := 1; i < len(result); i++ {
+			if result[i].CreatedAt.After(result[i-1].CreatedAt) {
+				rt.Fatalf("ordering violation at index %d: created_at %v > created_at %v",
+					i, result[i].CreatedAt, result[i-1].CreatedAt)
+			}
+		}
+	})
+}
+
+// TestRequeueTaskTx_Correctness verifies that RequeueTaskTx sets status to "pending" and clears assigned_to.
+// Requirements: 1.2
+func TestRequeueTaskTx_Correctness(t *testing.T) {
+	s := newTestStore(t)
+
+	// Create workflow instance (foreign key constraint)
+	inst := model.WorkflowInstance{
+		InstanceID: "wf-requeue", DefinitionID: "def-1", Status: "running",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	def := model.WorkflowDefinition{ID: "def-1", Name: "test"}
+	if err := s.SaveWorkflow(inst, def); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a task with status "assigned" and assigned_to "agent-1"
+	task := model.Task{
+		TaskID: "task-requeue-1", WorkflowID: "wf-requeue", NodeID: "n1", Type: "test",
+		Capabilities: []string{"cap1"}, Input: map[string]string{}, Output: map[string]string{},
+		Status: "assigned", Priority: 5, AssignedTo: "agent-1", RetryCount: 0,
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := s.SaveTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	// Call RunInTransaction with RequeueTaskTx
+	err := s.RunInTransaction(func(tx *sql.Tx) error {
+		return s.RequeueTaskTx(tx, "task-requeue-1")
+	})
+	if err != nil {
+		t.Fatalf("RunInTransaction+RequeueTaskTx failed: %v", err)
+	}
+
+	// Verify status is "pending" and assigned_to is ""
+	got, err := s.GetTask("task-requeue-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "pending" {
+		t.Errorf("status: got %q, want %q", got.Status, "pending")
+	}
+	if got.AssignedTo != "" {
+		t.Errorf("assigned_to: got %q, want empty string", got.AssignedTo)
+	}
+	// retry_count should remain unchanged
+	if got.RetryCount != 0 {
+		t.Errorf("retry_count: got %d, want 0 (unchanged)", got.RetryCount)
+	}
+}
+
+// TestRetryTaskTx_Correctness verifies that RetryTaskTx increments retry_count, sets status to "pending", and clears assigned_to.
+// Requirements: 1.1
+func TestRetryTaskTx_Correctness(t *testing.T) {
+	s := newTestStore(t)
+
+	// Create workflow instance (foreign key constraint)
+	inst := model.WorkflowInstance{
+		InstanceID: "wf-retry", DefinitionID: "def-1", Status: "running",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	def := model.WorkflowDefinition{ID: "def-1", Name: "test"}
+	if err := s.SaveWorkflow(inst, def); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a task with status "failed" and retry_count 0
+	task := model.Task{
+		TaskID: "task-retry-1", WorkflowID: "wf-retry", NodeID: "n1", Type: "test",
+		Capabilities: []string{"cap1"}, Input: map[string]string{}, Output: map[string]string{},
+		Status: "failed", Priority: 3, AssignedTo: "agent-2", RetryCount: 0,
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := s.SaveTask(task); err != nil {
+		t.Fatal(err)
+	}
+
+	// Call RunInTransaction with RetryTaskTx
+	err := s.RunInTransaction(func(tx *sql.Tx) error {
+		return s.RetryTaskTx(tx, "task-retry-1")
+	})
+	if err != nil {
+		t.Fatalf("RunInTransaction+RetryTaskTx failed: %v", err)
+	}
+
+	// Verify retry_count is 1, status is "pending", assigned_to is ""
+	got, err := s.GetTask("task-retry-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RetryCount != 1 {
+		t.Errorf("retry_count: got %d, want 1", got.RetryCount)
+	}
+	if got.Status != "pending" {
+		t.Errorf("status: got %q, want %q", got.Status, "pending")
+	}
+	if got.AssignedTo != "" {
+		t.Errorf("assigned_to: got %q, want empty string", got.AssignedTo)
+	}
+
+	// Call RetryTaskTx again to verify retry_count increments to 2
+	err = s.RunInTransaction(func(tx *sql.Tx) error {
+		return s.RetryTaskTx(tx, "task-retry-1")
+	})
+	if err != nil {
+		t.Fatalf("second RunInTransaction+RetryTaskTx failed: %v", err)
+	}
+
+	got2, err := s.GetTask("task-retry-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.RetryCount != 2 {
+		t.Errorf("retry_count after second retry: got %d, want 2", got2.RetryCount)
+	}
 }

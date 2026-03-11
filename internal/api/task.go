@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/clawfactory/clawfactory/internal/model"
+	"github.com/clawfactory/clawfactory/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -88,23 +90,32 @@ func (s *Server) updateTaskStatusHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if shouldRetry {
-			// Increment retry count
-			if err := s.Store.IncrementTaskRetryCount(taskID); err != nil {
-				logger.Error("update task status: increment retry count failed", "task_id", taskID, "error", err)
-				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("increment retry count failed: %v", err))
-				return
-			}
-			// Requeue as pending
-			if err := s.Queue.UpdateStatus(taskID, "pending", nil, ""); err != nil {
-				logger.Error("update task status: requeue failed", "task_id", taskID, "error", err)
-				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("requeue failed: %v", err))
-				return
-			}
-			// Clear task assignment
-			if err := s.Store.UpdateTaskAssignment(taskID, ""); err != nil {
-				logger.Error("update task status: clear assignment failed", "task_id", taskID, "error", err)
-				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("clear assignment failed: %v", err))
-				return
+			// Use transactional retry if SQLiteStore, otherwise fallback to individual calls
+			if sqliteStore, ok := s.Store.(*store.SQLiteStore); ok {
+				if err := sqliteStore.RunInTransaction(func(tx *sql.Tx) error {
+					return sqliteStore.RetryTaskTx(tx, taskID)
+				}); err != nil {
+					logger.Error("update task status: transactional retry failed", "task_id", taskID, "error", err)
+					writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("retry failed: %v", err))
+					return
+				}
+			} else {
+				// Fallback: non-transactional retry for non-SQLiteStore implementations
+				if err := s.Store.IncrementTaskRetryCount(taskID); err != nil {
+					logger.Error("update task status: increment retry count failed", "task_id", taskID, "error", err)
+					writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("increment retry count failed: %v", err))
+					return
+				}
+				if err := s.Queue.UpdateStatus(taskID, "pending", nil, ""); err != nil {
+					logger.Error("update task status: requeue failed", "task_id", taskID, "error", err)
+					writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("requeue failed: %v", err))
+					return
+				}
+				if err := s.Store.UpdateTaskAssignment(taskID, ""); err != nil {
+					logger.Error("update task status: clear assignment failed", "task_id", taskID, "error", err)
+					writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", fmt.Sprintf("clear assignment failed: %v", err))
+					return
+				}
 			}
 			logger.Info("task retrying", "task_id", taskID)
 

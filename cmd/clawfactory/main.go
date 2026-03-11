@@ -2,12 +2,17 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/clawfactory/clawfactory/internal/api"
@@ -98,7 +103,6 @@ func main() {
 		slog.Error("failed to initialize database", "error", err)
 		os.Exit(1)
 	}
-	defer stateStore.Close()
 
 	// Initialize components
 	queue := taskqueue.NewStoreBackedQueue(stateStore)
@@ -152,11 +156,70 @@ func main() {
 
 	router := api.NewRouter(srv, cfg.APITokens, mc, cfg.MetricsEnabled)
 
-	// Start background heartbeat check goroutine
+	// Set up signal-based context for graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Create http.Server for graceful shutdown support
+	addr := fmt.Sprintf(":%d", cfg.Port)
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
+
+	// Start HTTP server in a goroutine
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("HTTP server error", "component", "main", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Start background heartbeat check goroutine
+	var hbWg sync.WaitGroup
+	hbWg.Add(1)
+	go runHeartbeat(ctx, &hbWg, stateStore, reg, eventBus, mc)
+
+	slog.Info("ClawFactory platform started", "component", "main", "address", addr)
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+
+	slog.Info("received shutdown signal, initiating graceful shutdown...", "component", "main")
+
+	// Step 1: Shut down HTTP server with timeout
+	slog.Info("shutting down HTTP server...", "component", "main")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("HTTP server shutdown error", "component", "main", "error", err)
+	}
+	slog.Info("HTTP server stopped", "component", "main")
+
+	// Step 2: Wait for heartbeat goroutine to exit (already cancelled via ctx)
+	slog.Info("waiting for heartbeat goroutine to stop...", "component", "main")
+	hbWg.Wait()
+	slog.Info("heartbeat goroutine stopped", "component", "main")
+
+	// Step 3: Close database connection
+	slog.Info("closing database connection...", "component", "main")
+	if err := stateStore.Close(); err != nil {
+		slog.Error("failed to close database", "component", "main", "error", err)
+	}
+
+	slog.Info("graceful shutdown complete", "component", "main")
+}
+
+// runHeartbeat runs the periodic heartbeat check loop. It exits when ctx is cancelled.
+func runHeartbeat(ctx context.Context, wg *sync.WaitGroup, stateStore *store.SQLiteStore, reg registry.Registry, eventBus event.EventBus, mc metrics.MetricsCollector) {
+	defer wg.Done()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 			marked, err := reg.CheckAndMarkOffline(90 * time.Second)
 			if err != nil {
 				slog.Error("heartbeat check failed", "component", "heartbeat", "error", err)
@@ -169,9 +232,9 @@ func main() {
 			// Publish agent offline events and requeue tasks for offline agents
 			for _, agentID := range marked {
 				// Publish agent offline event
-				if srv.Events != nil {
+				if eventBus != nil {
 					detail, _ := json.Marshal(map[string]string{})
-					if err := srv.Events.Publish(model.Event{
+					if err := eventBus.Publish(model.Event{
 						EventID:    generateHeartbeatUUID(),
 						EventType:  model.EventAgentOffline,
 						EntityType: "agent",
@@ -189,18 +252,17 @@ func main() {
 					continue
 				}
 				for _, task := range tasks {
-					if err := queue.UpdateStatus(task.TaskID, "pending", nil, ""); err != nil {
+					if err := stateStore.RunInTransaction(func(tx *sql.Tx) error {
+						return stateStore.RequeueTaskTx(tx, task.TaskID)
+					}); err != nil {
 						slog.Error("failed to requeue task for offline agent", "component", "heartbeat", "task_id", task.TaskID, "agent_id", agentID, "error", err)
 						continue
 					}
-					if err := stateStore.UpdateTaskAssignment(task.TaskID, ""); err != nil {
-						slog.Error("failed to clear assignment for task", "component", "heartbeat", "task_id", task.TaskID, "error", err)
-					}
 
 					// Publish task requeued event
-					if srv.Events != nil {
+					if eventBus != nil {
 						detail, _ := json.Marshal(map[string]string{"reason": "agent_offline", "agent_id": agentID})
-						if err := srv.Events.Publish(model.Event{
+						if err := eventBus.Publish(model.Event{
 							EventID:    generateHeartbeatUUID(),
 							EventType:  model.EventTaskRequeued,
 							EntityType: "task",
@@ -218,7 +280,7 @@ func main() {
 			}
 
 			// Update online agents gauge
-			if srv.Metrics != nil {
+			if mc != nil {
 				agents, err := reg.ListAgents()
 				if err == nil {
 					onlineCount := 0
@@ -227,12 +289,12 @@ func main() {
 							onlineCount++
 						}
 					}
-					srv.Metrics.SetAgentsOnline(float64(onlineCount))
+					mc.SetAgentsOnline(float64(onlineCount))
 				}
 			}
 
 			// Update queue depth gauge
-			if srv.Metrics != nil {
+			if mc != nil {
 				unfinished, err := stateStore.ListUnfinishedTasks()
 				if err == nil {
 					pendingCount := 0
@@ -241,16 +303,9 @@ func main() {
 							pendingCount++
 						}
 					}
-					srv.Metrics.SetQueueDepth(float64(pendingCount))
+					mc.SetQueueDepth(float64(pendingCount))
 				}
 			}
 		}
-	}()
-
-	addr := fmt.Sprintf(":%d", cfg.Port)
-	slog.Info("ClawFactory platform started", "component", "main", "address", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
-		slog.Error("failed to start server", "error", err)
-		os.Exit(1)
 	}
 }

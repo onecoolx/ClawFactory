@@ -44,6 +44,47 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// RunInTransaction executes fn within a database transaction.
+// If fn returns nil, the transaction is committed; otherwise it is rolled back.
+func (s *SQLiteStore) RunInTransaction(fn func(tx *sql.Tx) error) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
+}
+
+// RequeueTaskTx requeues a task within a transaction: sets status to pending and clears assignment.
+func (s *SQLiteStore) RequeueTaskTx(tx *sql.Tx, taskID string) error {
+	_, err := tx.Exec(
+		`UPDATE tasks SET status = 'pending', assigned_to = '', updated_at = ? WHERE task_id = ?`,
+		time.Now().Format(time.RFC3339), taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("requeue task %s: %w", taskID, err)
+	}
+	return nil
+}
+
+// RetryTaskTx retries a task within a transaction: increments retry count, sets status to pending, clears assignment.
+func (s *SQLiteStore) RetryTaskTx(tx *sql.Tx, taskID string) error {
+	_, err := tx.Exec(
+		`UPDATE tasks SET retry_count = retry_count + 1, status = 'pending', assigned_to = '', updated_at = ? WHERE task_id = ?`,
+		time.Now().Format(time.RFC3339), taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("retry task %s: %w", taskID, err)
+	}
+	return nil
+}
+
 func (s *SQLiteStore) initTables() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS agents (
@@ -344,6 +385,26 @@ func (s *SQLiteStore) UpdateWorkflowStatus(instanceID string, status string) err
 		return fmt.Errorf("workflow %s not found", instanceID)
 	}
 	return nil
+}
+
+// ListWorkflowInstances returns all workflow instances ordered by created_at DESC.
+func (s *SQLiteStore) ListWorkflowInstances() ([]model.WorkflowInstance, error) {
+	rows, err := s.db.Query(
+		`SELECT instance_id, definition_id, status, created_at, updated_at FROM workflow_instances ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow instances: %w", err)
+	}
+	defer rows.Close()
+	var instances []model.WorkflowInstance
+	for rows.Next() {
+		var wi model.WorkflowInstance
+		if err := rows.Scan(&wi.InstanceID, &wi.DefinitionID, &wi.Status, &wi.CreatedAt, &wi.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan workflow instance: %w", err)
+		}
+		instances = append(instances, wi)
+	}
+	return instances, rows.Err()
 }
 
 // --- Log ---

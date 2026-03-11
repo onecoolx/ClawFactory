@@ -4,6 +4,7 @@
 # Build output
 bin/
 /clawfactory
+/claw
 
 # Python 3.9
 venv39/

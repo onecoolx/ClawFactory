@@ -36,6 +36,7 @@ func NewRouter(srv *Server, validTokens []string, mc metrics.MetricsCollector, m
 		r.Route("/admin", func(r chi.Router) {
 			r.Get("/agents", srv.listAgentsHandler)
 			r.Delete("/agents/{agentID}", srv.deregisterAgentHandler)
+			r.Get("/workflows", srv.listWorkflowsHandler)
 			r.Post("/workflows", srv.submitWorkflowHandler)
 			r.Get("/workflows/{workflowID}", srv.getWorkflowStatusHandler)
 			r.Get("/workflows/{workflowID}/artifacts", srv.getWorkflowArtifactsHandler)

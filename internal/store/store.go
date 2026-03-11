@@ -25,6 +25,7 @@ type StateStore interface {
 	SaveWorkflow(instance model.WorkflowInstance, definition model.WorkflowDefinition) error
 	GetWorkflow(instanceID string) (model.WorkflowInstance, model.WorkflowDefinition, error)
 	UpdateWorkflowStatus(instanceID string, status string) error
+	ListWorkflowInstances() ([]model.WorkflowInstance, error)
 
 	// Logs
 	SaveLog(entry model.LogEntry) error
