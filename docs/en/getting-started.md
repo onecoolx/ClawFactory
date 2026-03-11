@@ -138,6 +138,12 @@ The project includes a software development workflow example at `configs/softwar
 ./bin/claw workflow status <workflow_id>
 ```
 
+### List All Workflows
+
+```bash
+./bin/claw workflow list
+```
+
 ### List Agents
 
 ```bash
@@ -148,6 +154,12 @@ The project includes a software development workflow example at `configs/softwar
 
 ```bash
 ./bin/claw agent logs <agent_id>
+```
+
+### Deregister an Agent
+
+```bash
+./bin/claw agent deregister <agent_id>
 ```
 
 ### JSON Output

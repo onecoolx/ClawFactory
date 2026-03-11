@@ -27,6 +27,9 @@ claw workflow status <workflow_id>
 
 # 查询工作流产出物
 claw workflow artifacts <workflow_id>
+
+# 列出所有工作流实例（v0.3.1 新增）
+claw workflow list
 ```
 
 ### 智能体命令
@@ -37,6 +40,9 @@ claw agent list
 
 # 查看智能体日志
 claw agent logs <agent_id>
+
+# 注销智能体（v0.3.1 新增）
+claw agent deregister <agent_id>
 ```
 
 ## 工作流定义
@@ -387,6 +393,45 @@ data/artifacts/{workflow_id}/{task_id}/{artifact_name}
 - 保留原始的优先级、能力标签、输入数据和 `retry_count`
 
 这确保了即使智能体意外崩溃或断网，其未完成的任务也不会丢失，而是被其他可用智能体接管。
+
+## v0.3.1 新特性
+
+### 事务保护
+
+v0.3.1 引入了数据库事务保护，确保关键操作的原子性：
+
+- 任务失败重试：`retry_count` 递增、状态重置为 `pending`、清空 `assigned_to` 在同一事务中完成
+- 离线智能体任务重入队：多个任务的状态重置在同一事务中完成
+
+事务保护避免了部分更新导致的数据不一致问题。
+
+### 优雅关闭
+
+平台现在支持优雅关闭（Graceful Shutdown）：
+
+- 接收到 `SIGINT`（Ctrl+C）或 `SIGTERM` 信号后，平台会：
+  1. 停止接受新的 HTTP 请求
+  2. 等待正在处理的请求完成
+  3. 停止心跳检查 goroutine
+  4. 关闭数据库连接
+  5. 输出结构化关闭日志
+
+### CLI 新命令
+
+- `claw workflow list`：列出所有工作流实例，显示 ID、状态、定义 ID 和创建时间
+- `claw agent deregister <agent_id>`：注销指定智能体，注销后不再接收任务
+
+### 状态颜色化
+
+CLI 输出中的状态字段现在使用 ANSI 颜色标识：
+
+| 颜色 | 状态 |
+|------|------|
+| 绿色 | online, completed |
+| 红色 | offline, failed |
+| 黄色 | deregistered, running, assigned, pending |
+
+颜色化应用于 `agent list`、`workflow status`、`workflow list` 等命令的表格输出。
 
 ## 故障排查
 

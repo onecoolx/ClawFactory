@@ -147,6 +147,12 @@ curl http://localhost:8080/health
 ./bin/claw workflow status <workflow_id>
 ```
 
+### 列出所有工作流
+
+```bash
+./bin/claw workflow list
+```
+
 ### 查看智能体列表
 
 ```bash
@@ -157,6 +163,12 @@ curl http://localhost:8080/health
 
 ```bash
 ./bin/claw agent logs <agent_id>
+```
+
+### 注销智能体
+
+```bash
+./bin/claw agent deregister <agent_id>
 ```
 
 ### JSON 格式输出

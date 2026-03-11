@@ -27,6 +27,9 @@ claw workflow status <workflow_id>
 
 # Query workflow artifacts
 claw workflow artifacts <workflow_id>
+
+# List all workflow instances (New in v0.3.1)
+claw workflow list
 ```
 
 ### Agent Commands
@@ -37,6 +40,9 @@ claw agent list
 
 # View agent logs
 claw agent logs <agent_id>
+
+# Deregister an agent (New in v0.3.1)
+claw agent deregister <agent_id>
 ```
 
 ## Workflow Definition
@@ -332,6 +338,45 @@ At that point, all `assigned` and `running` tasks belonging to that agent are au
 - Original priority, capabilities, input data, and `retry_count` are preserved
 
 This ensures that even if an agent crashes or loses network connectivity, its unfinished tasks are not lost and will be picked up by other available agents.
+
+## v0.3.1 New Features
+
+### Transaction Protection
+
+v0.3.1 introduces database transaction protection to ensure atomicity of critical operations:
+
+- Task failure retry: `retry_count` increment, status reset to `pending`, and `assigned_to` clearing happen within a single transaction
+- Offline agent task requeue: status resets for multiple tasks happen within a single transaction
+
+Transaction protection prevents data inconsistency caused by partial updates.
+
+### Graceful Shutdown
+
+The platform now supports graceful shutdown:
+
+- Upon receiving `SIGINT` (Ctrl+C) or `SIGTERM`, the platform will:
+  1. Stop accepting new HTTP requests
+  2. Wait for in-flight requests to complete
+  3. Stop the heartbeat check goroutine
+  4. Close the database connection
+  5. Output structured shutdown logs
+
+### New CLI Commands
+
+- `claw workflow list`: Lists all workflow instances, showing ID, status, definition ID, and creation time
+- `claw agent deregister <agent_id>`: Deregisters the specified agent; deregistered agents no longer receive tasks
+
+### Status Colorization
+
+Status fields in CLI output now use ANSI colors:
+
+| Color | Status |
+|-------|--------|
+| Green | online, completed |
+| Red | offline, failed |
+| Yellow | deregistered, running, assigned, pending |
+
+Colorization applies to table output in `agent list`, `workflow status`, `workflow list`, and other commands.
 
 ## Troubleshooting
 

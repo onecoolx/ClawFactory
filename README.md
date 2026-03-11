@@ -142,7 +142,7 @@ go test ./...
 go test -v ./...
 ```
 
-The project includes 42 property-based tests using [rapid](https://github.com/flyingmutant/rapid) covering registration idempotency, capability matching, DAG validation, workflow state transitions, metrics, events, webhooks, and more.
+The project includes 45 property-based tests using [rapid](https://github.com/flyingmutant/rapid) covering registration idempotency, capability matching, DAG validation, workflow state transitions, metrics, events, webhooks, transaction atomicity, and more.
 
 ## Requirements
 

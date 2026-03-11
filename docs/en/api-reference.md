@@ -339,6 +339,26 @@ Sets the agent status to `deregistered`. Deregistered agents no longer receive t
 
 ---
 
+### GET /v1/admin/workflows — List Workflow Instances (New in v0.3.1)
+
+Lists all workflow instances in the platform.
+
+**Success Response (200):**
+
+```json
+[
+  {
+    "instance_id": "wf-inst-001",
+    "definition_id": "software-dev-workflow",
+    "status": "running",
+    "created_at": "2026-03-05T10:00:00Z",
+    "updated_at": "2026-03-05T10:05:00Z"
+  }
+]
+```
+
+---
+
 ### POST /v1/admin/workflows — Submit Workflow
 
 Submits a DAG workflow definition. The platform validates the DAG and automatically schedules root tasks.
@@ -727,6 +747,56 @@ DeleteWebhook(webhookID string) error
 ```
 
 Deletes the specified webhook subscription.
+
+---
+
+## StateStore Interface Methods (New in v0.3.1)
+
+The following StateStore interface methods were added in v0.3.1 to support transaction protection and workflow instance listing.
+
+### ListWorkflowInstances
+
+```go
+ListWorkflowInstances() ([]model.WorkflowInstance, error)
+```
+
+Returns all workflow instances.
+
+- Results are ordered by creation time descending
+- Used by the `GET /v1/admin/workflows` endpoint and the `claw workflow list` CLI command
+
+### RunInTransaction
+
+```go
+RunInTransaction(fn func(tx *sql.Tx) error) error
+```
+
+Executes the given function within a database transaction.
+
+- If `fn` returns nil, the transaction is committed; otherwise it is rolled back
+- Used for multi-step database operations requiring atomicity (e.g., task retry, offline task requeue)
+
+### RequeueTaskTx
+
+```go
+RequeueTaskTx(tx *sql.Tx, taskID string) error
+```
+
+Requeues a task within a transaction: sets status to `pending` and clears `assigned_to`.
+
+- Must be called within a transaction provided by `RunInTransaction`
+- Used for task requeue when an agent goes offline
+
+### RetryTaskTx
+
+```go
+RetryTaskTx(tx *sql.Tx, taskID string) error
+```
+
+Retries a task within a transaction: increments `retry_count`, sets status to `pending`, clears `assigned_to`.
+
+- Must be called within a transaction provided by `RunInTransaction`
+- Used for automatic task retry on failure
 
 ---
 

@@ -357,6 +357,26 @@ pending → assigned → running → completed
 
 ---
 
+### GET /v1/admin/workflows — 列出所有工作流实例（v0.3.1 新增）
+
+列出平台中所有工作流实例。
+
+**成功响应（200）：**
+
+```json
+[
+  {
+    "instance_id": "wf-inst-001",
+    "definition_id": "software-dev-workflow",
+    "status": "running",
+    "created_at": "2026-03-05T10:00:00Z",
+    "updated_at": "2026-03-05T10:05:00Z"
+  }
+]
+```
+
+---
+
 ### POST /v1/admin/workflows — 提交工作流
 
 提交一个 DAG 工作流定义，平台会验证 DAG 合法性并自动调度起始任务。
@@ -802,6 +822,56 @@ DeleteWebhook(webhookID string) error
 ```
 
 删除指定的 Webhook 订阅。
+
+---
+
+## StateStore 接口方法（v0.3.1 新增）
+
+以下是 v0.3.1 版本新增的 StateStore 接口方法，用于支持事务保护和工作流实例列表功能。
+
+### ListWorkflowInstances
+
+```go
+ListWorkflowInstances() ([]model.WorkflowInstance, error)
+```
+
+返回所有工作流实例列表。
+
+- 结果按创建时间降序排列
+- 用于 `GET /v1/admin/workflows` 端点和 `claw workflow list` CLI 命令
+
+### RunInTransaction
+
+```go
+RunInTransaction(fn func(tx *sql.Tx) error) error
+```
+
+在数据库事务中执行给定函数。
+
+- 如果 `fn` 返回 nil，事务提交；否则事务回滚
+- 用于需要原子性保证的多步数据库操作（如任务重试、离线任务重入队）
+
+### RequeueTaskTx
+
+```go
+RequeueTaskTx(tx *sql.Tx, taskID string) error
+```
+
+在事务中重入队任务：将状态设为 `pending`，清空 `assigned_to`。
+
+- 必须在 `RunInTransaction` 提供的事务中调用
+- 用于智能体离线时的任务重入队操作
+
+### RetryTaskTx
+
+```go
+RetryTaskTx(tx *sql.Tx, taskID string) error
+```
+
+在事务中重试任务：递增 `retry_count`，将状态设为 `pending`，清空 `assigned_to`。
+
+- 必须在 `RunInTransaction` 提供的事务中调用
+- 用于任务失败时的自动重试操作
 
 ---
 

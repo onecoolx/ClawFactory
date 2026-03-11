@@ -1,26 +1,28 @@
 # ClawFactory Technical Roadmap
 
-## Current Version Assessment (v0.3.0 — Observability)
+## Current Version Assessment (v0.3.1 — Reliability + CLI Enhancement)
 
 ### Implemented Features
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| ARI Protocol Layer | ✅ Done | 19 HTTP endpoints (including 5 new in v0.3), Token auth middleware, task failure auto-retry |
+| ARI Protocol Layer | ✅ Done | 20 HTTP endpoints (including 5 new in v0.3 + 1 new in v0.3.1), Token auth middleware, task failure auto-retry, transactional retry (v0.3.1) |
 | Registry | ✅ Done | Idempotent registration, heartbeat, offline detection, deregistration, offline task auto-requeue |
 | Scheduler | ✅ Done | Capability matching, status filtering, least-active-tasks load balancing, assigned_to persistence |
 | Policy Engine | ✅ Done | RBAC permissions, tool whitelist, rate limiting, audit logs |
 | Workflow Engine | ✅ Done | DAG validation, root task scheduling, dependency checking, status derivation |
 | Task Queue | ✅ Done | Priority ordering, capability matching, unfinished task recovery, removed SQLiteStore type assertion dependency |
 | Shared Memory | ✅ Done | Filesystem storage, workflow isolation, metadata persistence |
-| State Store (SQLite) | ✅ Done | 10 tables, WAL mode, foreign key constraints, 6 new methods (v0.2), 5 new methods (v0.3: events + webhooks) |
+| State Store (SQLite) | ✅ Done | 10 tables, WAL mode, foreign key constraints, 6 new methods (v0.2), 5 new methods (v0.3: events + webhooks), 4 new methods (v0.3.1: transactions + workflow list) |
 | Prometheus Metrics | ✅ Done | `/metrics` endpoint, 7 custom business metrics (New in v0.3) |
 | Structured Logging | ✅ Done | slog JSON format, log level control, request-level TraceID (New in v0.3) |
 | Event System | ✅ Done | 10 event types, SQLite persistence, query API (New in v0.3) |
 | Webhook Notifications | ✅ Done | CRUD API, async dispatch, 5s timeout (New in v0.3) |
-| CLI Tool | ✅ Done | workflow submit/status/artifacts, agent list/logs |
+| Transaction Protection | ✅ Done | RunInTransaction/RequeueTaskTx/RetryTaskTx, atomicity for critical operations (New in v0.3.1) |
+| Graceful Shutdown | ✅ Done | SIGINT/SIGTERM signal handling, HTTP Server graceful shutdown, heartbeat goroutine stop (New in v0.3.1) |
+| CLI Tool | ✅ Done | workflow submit/status/artifacts/list, agent list/logs/deregister, status colorization (Enhanced in v0.3.1) |
 | Python Example Agents | ✅ Done | 4 agents (requirement/design/coding/testing) |
-| Property Tests | ✅ Done | 42 property tests (v0.1: P1-P25, v0.2: P26-P33, v0.3: P34-P42) + unit tests, all passing |
+| Property Tests | ✅ Done | 45 property tests (v0.1: P1-P25, v0.2: P26-P33, v0.3: P34-P42, v0.3.1: P43-P45) + unit tests, all passing |
 | Documentation | ✅ Done | Bilingual (Chinese + English): architecture, API, getting-started, guide, examples, roadmap |
 
 ### Gap Analysis vs Mature Orchestration Platforms (e.g., Kubernetes)
@@ -117,14 +119,14 @@ Goal: From prototype to a usable single-machine production version.
 - [x] Task failure auto-retry (wired PolicyEngine.ShouldRetry into API handler) ✅
 - [x] Remove TaskQueue type assertion dependency on SQLiteStore (originally planned for v0.6, completed early) ✅
 - [x] Persist task assigned_to field to database ✅
-- [ ] Comprehensive transaction usage for all database operations
-- [ ] Graceful shutdown
+- [x] Comprehensive transaction usage for all database operations ✅ (completed in v0.3.1)
+- [x] Graceful shutdown ✅ (completed in v0.3.1)
 
 **CLI Enhancements**
 - [ ] `claw workflow cancel <workflow_id>`
-- [ ] `claw workflow list`
-- [ ] `claw agent deregister <agent_id>`
-- [ ] Colored output and progress display
+- [x] `claw workflow list` ✅ (completed in v0.3.1)
+- [x] `claw agent deregister <agent_id>` ✅ (completed in v0.3.1)
+- [x] Colored output and progress display ✅ (completed in v0.3.1)
 
 ### v0.3 — Observability (1 month)
 
@@ -145,6 +147,29 @@ Goal: From prototype to a usable single-machine production version.
 - [x] Event storage and query API ✅
 - [x] Webhook notifications (callback on workflow completion/failure) ✅
 
+### v0.3.1 — Reliability + CLI Enhancement (1-2 weeks)
+
+> **v0.3.1 reliability + CLI enhancement completed.** Added 3 new property tests (P43-P45), bringing the total to 45 property tests (with P1-P42), all passing.
+
+**Transaction Protection**
+- [x] StateStore new methods: RunInTransaction/RequeueTaskTx/RetryTaskTx ✅
+- [x] API layer task retry with transaction protection ✅
+- [x] Heartbeat goroutine offline task requeue with transaction protection ✅
+- [x] P43 property test: transaction atomicity verification ✅
+
+**Graceful Shutdown**
+- [x] http.Server graceful shutdown ✅
+- [x] signal.NotifyContext signal handling (SIGINT/SIGTERM) ✅
+- [x] Heartbeat goroutine context cancellation ✅
+- [x] Structured shutdown logging ✅
+
+**New CLI Commands**
+- [x] `claw workflow list` — list all workflow instances ✅
+- [x] `claw agent deregister <agent_id>` — deregister agent ✅
+- [x] Status colorization (ANSI colors for online/offline/completed/failed etc.) ✅
+- [x] P44 property test: workflow instance listing ✅
+- [x] P45 property test: colorize function correctness ✅
+
 ### v0.4 — Security Hardening (1 month)
 
 **Authentication**
@@ -161,7 +186,17 @@ Goal: From prototype to a usable single-machine production version.
 - [ ] Encrypted storage for sensitive configuration
 - [ ] Environment variable injection for agents
 
-### v0.5 — Advanced Workflow Features (1-2 months)
+### v0.5 — Scheduling Enhancement + Advanced Workflow Features (1-2 months)
+
+**Scheduler Enhancements (Moved from v0.2)**
+- [ ] Support scheduling affinity (agent label matching)
+- [ ] Task timeout detection (auto-requeue assigned/running tasks on timeout)
+
+**Workflow Enhancements (Moved from v0.2)**
+- [ ] Per-node timeout configuration
+- [ ] Workflow cancellation (cancel API + cascade cancel pending tasks)
+- [ ] `claw workflow cancel <workflow_id>` CLI command (depends on cancel API)
+- [ ] Pass upstream artifacts to downstream tasks on retry
 
 **Conditional Branching**
 - [ ] Node condition expressions (execute based on upstream output)
@@ -306,8 +341,9 @@ For detailed technical evolution direction, see the "Technical Evolution Directi
 | v0.1 ✅ | Prototype validation: core features + 25 property tests | Done |
 | v0.2 ✅ | Core hardening: load balancing + auto-retry + offline requeue + assigned_to persistence + TaskQueue interface fix (5 tech debts, 8 new property tests P26-P33) | Done |
 | v0.3 ✅ | Observability: Prometheus metrics + slog structured logging + TraceID + event system + Webhook notifications (9 new property tests P34-P42) | Done |
+| v0.3.1 ✅ | Reliability + CLI enhancement: transactions + graceful shutdown + workflow list + agent deregister + status colorization (3 new property tests P43-P45) | Done |
 | v0.4 | Security hardening: JWT + TLS | 1 month |
-| v0.5 | Advanced workflows: conditional branching + templates + ARI role labels | 1-2 months |
+| v0.5 | Scheduling enhancement + advanced workflows: affinity + timeout + cancel + conditional branching + templates + ARI role labels | 1-2 months |
 | v0.6 | Storage abstraction: PostgreSQL + Redis + S3/MinIO artifact storage | 1-2 months |
 | v0.7 | Distributed architecture: multi-instance + distributed queue + runtime DAG modification | 2-3 months |
 | v0.8 | Cloud-native: Docker + K8s + Helm | 1-2 months |

@@ -65,6 +65,7 @@ The platform's entry point, responsible for routing all HTTP requests and execut
 
 Route structure:
 - `GET /health` — Health check (no auth required)
+- `GET /metrics` — Prometheus metrics (no auth required, New in v0.3)
 - `POST /v1/register` — Agent registration
 - `POST /v1/heartbeat` — Heartbeat reporting
 - `GET /v1/tasks` — Task polling
@@ -73,10 +74,15 @@ Route structure:
 - `POST /v1/log` — Log reporting
 - `GET /v1/admin/agents` — List all agents
 - `DELETE /v1/admin/agents/{agentID}` — Deregister agent
+- `GET /v1/admin/workflows` — List workflow instances (New in v0.3.1)
 - `POST /v1/admin/workflows` — Submit workflow
 - `GET /v1/admin/workflows/{workflowID}` — Query workflow status
 - `GET /v1/admin/workflows/{workflowID}/artifacts` — Query artifacts
 - `GET /v1/admin/agents/{agentID}/logs` — Query agent logs
+- `GET /v1/admin/events` — List events (New in v0.3)
+- `POST /v1/admin/webhooks` — Create webhook subscription (New in v0.3)
+- `GET /v1/admin/webhooks` — List webhook subscriptions (New in v0.3)
+- `DELETE /v1/admin/webhooks/{webhookID}` — Delete webhook subscription (New in v0.3)
 
 ### 2. Registry
 
@@ -152,6 +158,16 @@ Managed data:
 - Logs
 - Artifact metadata
 - Audit logs
+- Event records (New in v0.3)
+- Webhook subscriptions (New in v0.3)
+
+v0.3.1 added transaction support methods (`RunInTransaction`, `RequeueTaskTx`, `RetryTaskTx`) to ensure atomicity of critical operations.
+
+## Platform Runtime Characteristics
+
+### Graceful Shutdown (New in v0.3.1)
+
+The platform supports graceful shutdown: upon receiving SIGINT or SIGTERM, it stops accepting new requests, waits for in-flight requests to complete, stops the heartbeat check goroutine, closes the database connection, and outputs structured shutdown logs.
 
 ## Data Flow
 
